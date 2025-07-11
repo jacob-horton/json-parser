@@ -22,8 +22,6 @@ pub enum TokenKind<'a> {
     Colon,
     Comma,
 
-    EOF,
-
     String(&'a str),
     Float(f64),
     Int(i64),

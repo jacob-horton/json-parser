@@ -1,5 +1,28 @@
 use crate::token::{Token, TokenKind};
 
+static BUG_END_OF_SOURCE: &'static str = "[BUG] Reached end of source when shouldn't be possible";
+static BUG_FAILED_PARSE_NUMBER: &'static str =
+    "[BUG] Failed to parse number when already validated";
+static BUG_PREV_BEFORE_ADVANCE: &'static str =
+    "[BUG] called `prev` before advancing - no previous value";
+
+#[derive(Debug, Clone)]
+pub struct ScannerErr {
+    pub kind: ScannerErrKind,
+    pub line: usize,
+    pub lexeme: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum ScannerErrKind {
+    EndOfSource,
+    UnexpectedEndOfSource,
+    UnterminatedString,
+    UnrecognisedSymbol,
+    UnrecognisedKeyword,
+    InvalidNumber,
+}
+
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
     source: &'a str,
@@ -25,46 +48,52 @@ impl<'a> Scanner<'a> {
         Token::init(kind, self.line, &self.source[start..self.current])
     }
 
-    fn advance(&mut self) -> char {
+    fn make_err(&self, kind: ScannerErrKind) -> ScannerErr {
+        ScannerErr {
+            kind,
+            line: self.line,
+            lexeme: self.source[self.token_start..self.current].to_string(),
+        }
+    }
+
+    fn advance(&mut self) -> Result<char, ScannerErr> {
         // When advancing, make sure to advance the correct number of bytes
         // A character such as an emoji may be more than 1 byte, so increase `current` by the number
         // of bytes of the char we advanced past
         let remaining = &self.source[self.current..];
         let mut chars = remaining.char_indices();
-        let (_, c) = chars.next().expect("Unexpected end of input");
+        let (_, c) = chars
+            .next()
+            .ok_or(self.make_err(ScannerErrKind::UnexpectedEndOfSource))?;
         let (next_byte_index, _) = chars.next().unwrap_or((remaining.len(), ' '));
 
         self.current += next_byte_index;
-        c
+        Ok(c)
     }
 
-    fn peek_unchecked(&self) -> char {
+    fn peek(&self) -> Result<char, ScannerErr> {
         self.source[self.current..]
             .chars()
             .next()
-            .expect("Reached end of source code")
+            .ok_or(self.make_err(ScannerErrKind::UnexpectedEndOfSource))
     }
 
-    fn peek(&self) -> Option<char> {
-        self.source[self.current..].chars().next()
-    }
-
-    fn peek_prev_unchecked(&self) -> char {
+    fn prev(&self) -> char {
         self.source[self.current - 1..]
             .chars()
             .next()
-            .expect("Failed to peek previous character")
+            .expect(BUG_PREV_BEFORE_ADVANCE)
     }
 
     fn skip_whitespace(&mut self) {
         loop {
             match self.peek() {
-                Some(' ' | '\t' | '\r') => {
-                    self.advance();
+                Ok(' ' | '\t' | '\r') => {
+                    self.advance().expect(BUG_END_OF_SOURCE);
                 }
-                Some('\n') => {
+                Ok('\n') => {
                     self.line += 1;
-                    self.advance();
+                    self.advance().expect(BUG_END_OF_SOURCE);
                 }
                 _ => {
                     return;
@@ -78,132 +107,142 @@ impl<'a> Scanner<'a> {
     }
 
     fn matches(&mut self, c: char) -> bool {
-        if self.peek_unchecked() == c {
-            self.advance();
+        // If not end of source and character matches, return true
+        if matches!(self.peek(), Ok(chr) if chr == c) {
+            self.advance().expect(BUG_END_OF_SOURCE);
             return true;
         }
 
         false
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Result<Token, ScannerErr> {
         let mut is_float = false;
 
         // Consume digits - we already know we've got an initial one
-        while matches!(self.peek(), Some(c) if c.is_digit(10)) {
-            self.advance();
+        while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+            self.advance().expect(BUG_END_OF_SOURCE);
         }
 
         // If reach a `.`, include it and continue matching digits
         // We know it is a float at this point
         if self.matches('.') {
             is_float = true;
-            while matches!(self.peek(), Some(c) if c.is_digit(10)) {
-                self.advance();
+            while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+                self.advance().expect(BUG_END_OF_SOURCE);
             }
         }
 
         let next_char = self.peek();
 
         // Allow scientific notation e.g. 10e5
-        if let Some(c) = next_char {
+        if let Ok(c) = next_char {
             if c == 'e' {
                 // If using scientific notation, it is a float
                 is_float = true;
+                let mut has_number_after_e = false;
 
-                self.advance();
+                self.advance().expect(BUG_END_OF_SOURCE);
                 self.matches('-'); // Consume `-` if it exists
-                while matches!(self.peek(), Some(c) if c.is_digit(10)) {
-                    self.advance();
+                while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+                    self.advance().expect(BUG_END_OF_SOURCE);
+                    has_number_after_e = true;
+                }
+
+                if !has_number_after_e {
+                    return Err(self.make_err(ScannerErrKind::InvalidNumber));
                 }
             } else if c.is_alphabetic() {
-                panic!(
-                    "Unexpected character in number: '{}{}'",
-                    &self.source[self.token_start..self.current],
-                    next_char.unwrap(),
-                );
+                return Err(self.make_err(ScannerErrKind::InvalidNumber));
             }
         }
 
         let token_kind = if is_float {
-            TokenKind::Float(
-                self.source[self.token_start..self.current]
-                    .parse()
-                    .expect("Failed to parse float."),
-            )
+            let lexeme = &self.source[self.token_start..self.current];
+            let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
+            TokenKind::Float(literal)
         } else {
-            TokenKind::Int(
-                self.source[self.token_start..self.current]
-                    .parse()
-                    .expect("Failed to parse int."),
-            )
+            let lexeme = &self.source[self.token_start..self.current];
+            let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
+            TokenKind::Int(literal)
         };
 
-        let token = self.make_token(token_kind);
-
-        return token;
+        Ok(self.make_token(token_kind))
     }
 
-    fn string(&mut self) -> Token {
-        while !(self.peek_unchecked() == '"' && self.peek_prev_unchecked() != '\\')
-            && !self.is_at_end()
-        {
-            // Remember to increase line number if multiline string
-            if self.peek_unchecked() == '\n' {
-                self.line += 1;
+    fn is_end_of_string(&self) -> Result<bool, ScannerErr> {
+        let next = self.peek()?;
+
+        // Not on a quote, so not end of string
+        if next != '"' {
+            return Ok(false);
+        }
+
+        let curr = self.prev();
+
+        // Escaping the quote
+        if curr == '\\' {
+            return Ok(false);
+        }
+
+        return Ok(true);
+    }
+
+    fn string(&mut self) -> Result<Token, ScannerErr> {
+        while !self.is_end_of_string()? {
+            if matches!(self.peek(), Ok('\n')) {
+                return Err(self.make_err(ScannerErrKind::UnterminatedString));
             }
 
-            self.advance();
+            self.advance().expect(BUG_END_OF_SOURCE);
         }
 
-        // TODO: handle properly
-        if self.is_at_end() {
-            panic!("Unterminated string");
-        }
-
-        self.advance();
-        return self.make_token(TokenKind::String(
-            &self.source[self.token_start + 1..self.current - 1],
-        ));
+        self.advance().expect(BUG_END_OF_SOURCE);
+        let unquoted_value = &self.source[self.token_start + 1..self.current - 1];
+        return Ok(self.make_token(TokenKind::String(unquoted_value)));
     }
 
-    fn keyword(&mut self) -> Token {
-        while matches!(self.peek(), Some(c) if c.is_alphabetic()) {
-            self.advance();
+    fn keyword(&mut self) -> Result<Token, ScannerErr> {
+        while matches!(self.peek(), Ok(c) if c.is_alphabetic()) {
+            self.advance().expect(BUG_END_OF_SOURCE);
         }
 
         let keyword = &self.source[self.token_start..self.current];
-        match keyword {
-            "true" => self.make_token(TokenKind::Boolean(true)),
-            "false" => self.make_token(TokenKind::Boolean(false)),
-            "null" => self.make_token(TokenKind::Null),
-            _ => panic!("Unrecognised keyword '{keyword}'"),
-        }
+        let kind = match keyword {
+            "null" => TokenKind::Null,
+            "true" => TokenKind::Boolean(true),
+            "false" => TokenKind::Boolean(false),
+            _ => Err(self.make_err(ScannerErrKind::UnrecognisedKeyword))?,
+        };
+
+        Ok(self.make_token(kind))
     }
 
-    fn symbol(&mut self) -> Token {
-        let char = self.peek_prev_unchecked();
-        match char {
-            '{' => self.make_token(TokenKind::LCurlyBracket),
-            '}' => self.make_token(TokenKind::RCurlyBracket),
-            '[' => self.make_token(TokenKind::LBracket),
-            ']' => self.make_token(TokenKind::RBracket),
-            ':' => self.make_token(TokenKind::Colon),
-            ',' => self.make_token(TokenKind::Comma),
-            _ => panic!("Unrecognised symbol '{char}'"),
-        }
+    fn symbol(&mut self) -> Result<Token, ScannerErr> {
+        let char = self.prev();
+        let kind = match char {
+            '{' => TokenKind::LCurlyBracket,
+            '}' => TokenKind::RCurlyBracket,
+            '[' => TokenKind::LBracket,
+            ']' => TokenKind::RBracket,
+            ':' => TokenKind::Colon,
+            ',' => TokenKind::Comma,
+            _ => Err(self.make_err(ScannerErrKind::UnrecognisedSymbol))?,
+        };
+
+        Ok(self.make_token(kind))
     }
 
-    pub fn next_token(&mut self) -> Token {
+    pub fn next_token(&mut self) -> Result<Token, ScannerErr> {
         self.skip_whitespace();
 
         if self.is_at_end() {
-            return self.make_token(TokenKind::EOF);
+            return Err(self.make_err(ScannerErrKind::EndOfSource));
         }
 
         self.token_start = self.current;
 
-        let c = self.advance();
+        let c = self.advance()?;
 
         if c.is_digit(10) || c == '-' {
             return self.number();
