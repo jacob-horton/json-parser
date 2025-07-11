@@ -1,0 +1,51 @@
+{
+	"name": "Jane Doe",
+	"age": 32,
+	"isVerified": true,
+	"balance": 10457.89,
+	"nickname": null,
+	"contact": {
+		"email": "jane.doe@example.com",
+		"phone": "+1-555-123-4567",
+		"address": {
+			"street": "123 Maple Street",
+			"city": "Springfield",
+			"zipcode": "12345",
+			"country": "USA"
+		}
+	},
+	"preferences": {
+		"notifications": {
+			"email": true,
+			"sms": false
+		},
+		"theme": "dark",
+		"language": "en-US"
+	},
+	"tags": [
+		"user",
+		"admin",
+		"editor"
+	],
+	"history": [
+		{
+			"login": "2025-07-01T12:34:56Z",
+			"ip": "192.168.1.1",
+			"success": true
+		},
+		{
+			"login": "2025-06-30T08:21:12Z",
+			"ip": "192.168.1.2",
+			"success": false
+		}
+	],
+	"unicodeExample": "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"",
+	"numbers": {
+		"int": 42,
+		"float": 3.14159,
+		"scientific": 6.022e23,
+		"scientific_no_decimal": 6e5,
+		"negative": -5,
+		"negative_scientific": -5.1e-10
+	}
+}
