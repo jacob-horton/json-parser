@@ -1,18 +1,22 @@
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
-    pub kind: TokenKind<'a>,
+pub struct Token {
+    pub kind: TokenKind,
     pub line: usize,
-    pub lexeme: &'a str,
+    pub lexeme: String,
 }
 
-impl<'a> Token<'a> {
-    pub fn init(kind: TokenKind<'a>, line: usize, lexeme: &'a str) -> Self {
-        Self { kind, line, lexeme }
+impl Token {
+    pub fn init(kind: TokenKind, line: usize, lexeme: &str) -> Self {
+        Self {
+            kind,
+            line,
+            lexeme: lexeme.to_string(),
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind<'a> {
+pub enum TokenKind {
     LCurlyBracket,
     RCurlyBracket,
 
@@ -22,7 +26,7 @@ pub enum TokenKind<'a> {
     Colon,
     Comma,
 
-    String(&'a str),
+    String(String),
     Float(f64),
     Int(i64),
     Boolean(bool),

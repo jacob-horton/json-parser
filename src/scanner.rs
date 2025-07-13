@@ -41,7 +41,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn make_token(&mut self, kind: TokenKind<'a>) -> Token {
+    fn make_token(&mut self, kind: TokenKind) -> Token {
         let start = self.token_start;
         self.token_start = self.current;
 
@@ -199,7 +199,7 @@ impl<'a> Scanner<'a> {
 
         self.advance().expect(BUG_END_OF_SOURCE);
         let unquoted_value = &self.source[self.token_start + 1..self.current - 1];
-        return Ok(self.make_token(TokenKind::String(unquoted_value)));
+        return Ok(self.make_token(TokenKind::String(unquoted_value.to_string())));
     }
 
     fn keyword(&mut self) -> Result<Token, ScannerErr> {
