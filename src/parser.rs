@@ -1,15 +1,60 @@
 use std::collections::HashMap;
 
 use crate::{
-    scanner::{Scanner, ScannerErrKind},
+    scanner::{Scanner, ScannerErr, ScannerErrKind},
     token::{Token, TokenKind},
 };
 
 static BUG_PREV_BEFORE_ADVANCE: &'static str =
-    "[BUG] called `prev` before advancing - no previous value";
+    "[BUG] Called `prev` before advancing - no previous value";
+static BUG_NO_TOKEN_ERR_REPORT: &'static str = "[BUG] Failed to get token for reporting error";
+
+#[derive(Debug, Clone)]
+pub struct ParserErr {
+    pub kind: ParserErrKind,
+    pub line: usize,
+    pub lexeme: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum ParserErrKind {
+    // Scanner specific errors
+    UnterminatedString,
+    UnrecognisedSymbol,
+    UnrecognisedKeyword,
+    InvalidNumber,
+
+    // Parser specific errors
+    ExpectedEndOfSource,
+    ExpectedToken(TokenKind),
+    UnexpectedToken,
+
+    // Both
+    UnexpectedEndOfSource,
+}
+
+impl From<ScannerErr> for ParserErr {
+    fn from(err: ScannerErr) -> Self {
+        let kind = match err.kind {
+            ScannerErrKind::UnexpectedEndOfSource => ParserErrKind::UnexpectedEndOfSource,
+            ScannerErrKind::UnterminatedString => ParserErrKind::UnterminatedString,
+            ScannerErrKind::UnrecognisedSymbol => ParserErrKind::UnrecognisedSymbol,
+            ScannerErrKind::UnrecognisedKeyword => ParserErrKind::UnrecognisedKeyword,
+            ScannerErrKind::InvalidNumber => ParserErrKind::InvalidNumber,
+        };
+
+        return Self {
+            line: err.line,
+            lexeme: err.lexeme,
+            kind,
+        };
+    }
+}
 
 trait Parse {
-    fn parse(parser: &mut Parser) -> Self;
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr>
+    where
+        Self: Sized;
 }
 
 #[derive(Debug, Clone)]
@@ -21,52 +66,74 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn parse(source: &str) -> Any {
+    fn make_err(&self, kind: ParserErrKind) -> ParserErr {
+        // Get current token, fallback to previous
+        let err_token = self
+            .current
+            .clone()
+            .unwrap_or_else(|| self.prev.clone().expect(BUG_NO_TOKEN_ERR_REPORT));
+
+        ParserErr {
+            kind,
+            line: err_token.line,
+            lexeme: err_token.lexeme,
+        }
+    }
+
+    // Make err with prev token instead of current
+    fn make_err_prev(&self, kind: ParserErrKind) -> ParserErr {
+        let err_token = self.prev.clone().expect(BUG_NO_TOKEN_ERR_REPORT);
+
+        ParserErr {
+            kind,
+            line: err_token.line,
+            lexeme: err_token.lexeme,
+        }
+    }
+
+    pub fn parse(source: &str) -> Result<Any, ParserErr> {
         let mut scanner = Scanner::init(source);
-        // TODO: handle properly
-        let current = scanner.next_token().unwrap();
+        let current = scanner.next_token()?;
 
         let mut parser = Parser {
             scanner,
-            current: Some(current),
+            current,
             prev: None,
         };
 
-        let result = Any::parse(&mut parser);
+        let result = Any::parse(&mut parser)?;
         if parser.current.is_some() {
-            panic!("End of file expected");
+            return Err(parser.make_err(ParserErrKind::ExpectedEndOfSource));
         }
 
-        return result;
+        Ok(result)
     }
 
-    fn consume(&mut self, kind: TokenKind) {
-        if self.check(kind) {
-            self.advance();
-            return;
+    fn consume(&mut self, kind: TokenKind) -> Result<(), ParserErr> {
+        if self.check(kind.clone())? {
+            self.advance()?;
+            return Ok(());
         }
 
-        panic!("Expected token");
+        return Err(self.make_err(ParserErrKind::ExpectedToken(kind)));
     }
 
-    fn check(&self, kind: TokenKind) -> bool {
-        let curr = self.current.clone().unwrap();
-        return curr.kind == kind;
+    fn check(&self, kind: TokenKind) -> Result<bool, ParserErr> {
+        return Ok(self.peek()?.kind == kind);
     }
 
-    fn advance(&mut self) -> Token {
+    fn peek(&self) -> Result<Token, ParserErr> {
+        return self
+            .current
+            .clone()
+            .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource));
+    }
+
+    fn advance(&mut self) -> Result<Token, ParserErr> {
         self.prev = self.current.clone();
+        self.current = self.scanner.next_token()?;
 
-        // TODO: handle properly
-        match self.scanner.next_token() {
-            Ok(token) => self.current = Some(token),
-            Err(err) => match err.kind {
-                ScannerErrKind::EndOfSource => self.current = None,
-                _ => panic!("{err:?}"),
-            },
-        }
-
-        return self.previous();
+        return Ok(self.previous());
     }
 
     fn previous(&self) -> Token {
@@ -87,18 +154,20 @@ pub enum Any {
 }
 
 impl Parse for Any {
-    fn parse(parser: &mut Parser) -> Self {
-        let token = parser.advance();
-        match token.kind {
-            TokenKind::LCurlyBracket => return Self::Object(Object::parse(parser)),
-            TokenKind::LBracket => return Self::Array(Array::parse(parser)),
-            TokenKind::String(x) => return Self::String(x),
-            TokenKind::Float(x) => return Self::Float(x),
-            TokenKind::Int(x) => return Self::Int(x),
-            TokenKind::Boolean(x) => return Self::Boolean(x),
-            TokenKind::Null => return Self::Null,
-            _ => panic!("Unexpected token: {:?}", token),
-        }
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        let token = parser.advance()?;
+        let ast = match token.kind {
+            TokenKind::LCurlyBracket => Self::Object(Object::parse(parser)?),
+            TokenKind::LBracket => Self::Array(Array::parse(parser)?),
+            TokenKind::String(x) => Self::String(x),
+            TokenKind::Float(x) => Self::Float(x),
+            TokenKind::Int(x) => Self::Int(x),
+            TokenKind::Boolean(x) => Self::Boolean(x),
+            TokenKind::Null => Self::Null,
+            _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
+        };
+
+        Ok(ast)
     }
 }
 
@@ -108,33 +177,33 @@ pub struct Object {
 }
 
 impl Parse for Object {
-    fn parse(parser: &mut Parser) -> Self {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let mut props = HashMap::new();
 
         // Loop through all properties
         loop {
-            let token = parser.advance();
+            let token = parser.advance()?;
             match token.kind {
                 TokenKind::String(name) => {
-                    parser.consume(TokenKind::Colon);
+                    parser.consume(TokenKind::Colon)?;
 
-                    let value = Any::parse(parser);
+                    let value = Any::parse(parser)?;
                     props.insert(name, value);
 
                     // Once no comma at end, we have reached end of object
-                    if parser.check(TokenKind::Comma) {
-                        parser.advance();
+                    if parser.check(TokenKind::Comma)? {
+                        parser.advance()?;
                     } else {
                         break;
                     }
                 }
-                _ => panic!("Unexpected token: {:?}", token),
+                _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
             }
         }
 
-        parser.consume(TokenKind::RCurlyBracket);
+        parser.consume(TokenKind::RCurlyBracket)?;
 
-        Self { props }
+        Ok(Self { props })
     }
 }
 
@@ -144,24 +213,24 @@ pub struct Array {
 }
 
 impl Parse for Array {
-    fn parse(parser: &mut Parser) -> Self {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let mut elems = Vec::new();
 
         // Loop through all elements
         loop {
-            let elem = Any::parse(parser);
+            let elem = Any::parse(parser)?;
             elems.push(elem);
 
             // Once no comma at end, we have reached end of array
-            if parser.check(TokenKind::Comma) {
-                parser.advance();
+            if parser.check(TokenKind::Comma)? {
+                parser.advance()?;
             } else {
                 break;
             }
         }
 
-        parser.consume(TokenKind::RBracket);
+        parser.consume(TokenKind::RBracket)?;
 
-        Self { elems }
+        Ok(Self { elems })
     }
 }

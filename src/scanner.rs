@@ -4,7 +4,7 @@ static BUG_END_OF_SOURCE: &'static str = "[BUG] Reached end of source when shoul
 static BUG_FAILED_PARSE_NUMBER: &'static str =
     "[BUG] Failed to parse number when already validated";
 static BUG_PREV_BEFORE_ADVANCE: &'static str =
-    "[BUG] called `prev` before advancing - no previous value";
+    "[BUG] Called `prev` before advancing - no previous value";
 
 #[derive(Debug, Clone)]
 pub struct ScannerErr {
@@ -15,7 +15,6 @@ pub struct ScannerErr {
 
 #[derive(Debug, Clone)]
 pub enum ScannerErrKind {
-    EndOfSource,
     UnexpectedEndOfSource,
     UnterminatedString,
     UnrecognisedSymbol,
@@ -233,11 +232,11 @@ impl<'a> Scanner<'a> {
         Ok(self.make_token(kind))
     }
 
-    pub fn next_token(&mut self) -> Result<Token, ScannerErr> {
+    pub fn next_token(&mut self) -> Result<Option<Token>, ScannerErr> {
         self.skip_whitespace();
 
         if self.is_at_end() {
-            return Err(self.make_err(ScannerErrKind::EndOfSource));
+            return Ok(None);
         }
 
         self.token_start = self.current;
@@ -245,17 +244,17 @@ impl<'a> Scanner<'a> {
         let c = self.advance()?;
 
         if c.is_digit(10) || c == '-' {
-            return self.number();
+            return self.number().map(|x| Some(x));
         }
 
         if c.is_alphabetic() {
-            return self.keyword();
+            return self.keyword().map(|x| Some(x));
         }
 
         if c == '"' {
-            return self.string();
+            return self.string().map(|x| Some(x));
         }
 
-        return self.symbol();
+        return self.symbol().map(|x| Some(x));
     }
 }
