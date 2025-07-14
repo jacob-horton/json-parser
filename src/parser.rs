@@ -50,7 +50,7 @@ impl<'a> Parser<'a> {
     }
 
     fn check(&self, kind: TokenKind) -> bool {
-        let curr = self.peek();
+        let curr = self.current.clone().unwrap();
         return curr.kind == kind;
     }
 
@@ -67,10 +67,6 @@ impl<'a> Parser<'a> {
         }
 
         return self.previous();
-    }
-
-    fn peek(&self) -> Token {
-        return self.current.clone().unwrap();
     }
 
     fn previous(&self) -> Token {
@@ -90,28 +86,10 @@ pub enum Any {
     Null,
 }
 
-// Performs rust matching, and advances if a case is matched
-macro_rules! match_and_advance {
-    ($parser:expr, {
-        $($pat:pat => $branch:expr),* $(,)?
-    }) => {{
-        let kind = $parser.peek().kind;
-        match kind {
-            $(
-                $pat => {
-                    $parser.advance();
-                    $branch;
-                    true
-                }
-            )*
-            _ => false,
-        }
-    }}
-}
-
 impl Parse for Any {
     fn parse(parser: &mut Parser) -> Self {
-        match_and_advance!(parser, {
+        let token = parser.advance();
+        match token.kind {
             TokenKind::LCurlyBracket => return Self::Object(Object::parse(parser)),
             TokenKind::LBracket => return Self::Array(Array::parse(parser)),
             TokenKind::String(x) => return Self::String(x),
@@ -119,9 +97,8 @@ impl Parse for Any {
             TokenKind::Int(x) => return Self::Int(x),
             TokenKind::Boolean(x) => return Self::Boolean(x),
             TokenKind::Null => return Self::Null,
-        });
-
-        panic!("Unexpected token: {:?}", parser.peek())
+            _ => panic!("Unexpected token: {:?}", token),
+        }
     }
 }
 
@@ -134,20 +111,24 @@ impl Parse for Object {
     fn parse(parser: &mut Parser) -> Self {
         let mut props = HashMap::new();
 
-        // TODO: use `loop` and break if reached `}`
-        let mut has_another_field = true;
-        while has_another_field {
-            let success = match_and_advance!(parser, {
+        // Loop through all properties
+        loop {
+            let token = parser.advance();
+            match token.kind {
                 TokenKind::String(name) => {
                     parser.consume(TokenKind::Colon);
-                    props.insert(name, Any::parse(parser));
 
-                    has_another_field = match_and_advance!(parser, {TokenKind::Comma => {}});
+                    let value = Any::parse(parser);
+                    props.insert(name, value);
+
+                    // Once no comma at end, we have reached end of object
+                    if parser.check(TokenKind::Comma) {
+                        parser.advance();
+                    } else {
+                        break;
+                    }
                 }
-            });
-
-            if !success {
-                panic!("Unexpected token: {:?}", parser.peek());
+                _ => panic!("Unexpected token: {:?}", token),
             }
         }
 
@@ -166,11 +147,17 @@ impl Parse for Array {
     fn parse(parser: &mut Parser) -> Self {
         let mut elems = Vec::new();
 
-        let mut has_another_field = true;
-        while has_another_field {
-            elems.push(Any::parse(parser));
+        // Loop through all elements
+        loop {
+            let elem = Any::parse(parser);
+            elems.push(elem);
 
-            has_another_field = match_and_advance!(parser, {TokenKind::Comma => {}});
+            // Once no comma at end, we have reached end of array
+            if parser.check(TokenKind::Comma) {
+                parser.advance();
+            } else {
+                break;
+            }
         }
 
         parser.consume(TokenKind::RBracket);
