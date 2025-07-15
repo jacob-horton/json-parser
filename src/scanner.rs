@@ -20,6 +20,7 @@ pub enum ScannerErrKind {
     UnrecognisedSymbol,
     UnrecognisedKeyword,
     InvalidNumber,
+    InvalidEscapeSequence,
 }
 
 #[derive(Debug, Clone)]
@@ -136,13 +137,19 @@ impl<'a> Scanner<'a> {
 
         // Allow scientific notation e.g. 10e5
         if let Ok(c) = next_char {
-            if c == 'e' {
+            if c == 'e' || c == 'E' {
                 // If using scientific notation, it is a float
                 is_float = true;
                 let mut has_number_after_e = false;
 
                 self.advance().expect(BUG_END_OF_SOURCE);
-                self.matches('-'); // Consume `-` if it exists
+
+                // TODO: do this in a more comprehensible way
+                // Consume `-` or `+` if it exists
+                if !self.matches('-') {
+                    self.matches('+');
+                }
+
                 while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
                     self.advance().expect(BUG_END_OF_SOURCE);
                     has_number_after_e = true;
@@ -156,12 +163,15 @@ impl<'a> Scanner<'a> {
             }
         }
 
+        let lexeme = &self.source[self.token_start..self.current];
+        if lexeme == "-" {
+            return Err(self.make_err(ScannerErrKind::InvalidNumber));
+        }
+
         let token_kind = if is_float {
-            let lexeme = &self.source[self.token_start..self.current];
             let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
             TokenKind::Float(literal)
         } else {
-            let lexeme = &self.source[self.token_start..self.current];
             let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
             TokenKind::Int(literal)
         };
@@ -177,28 +187,54 @@ impl<'a> Scanner<'a> {
             return Ok(false);
         }
 
-        let curr = self.prev();
-
-        // Escaping the quote
-        if curr == '\\' {
-            return Ok(false);
-        }
-
         return Ok(true);
     }
 
     fn string(&mut self) -> Result<Token, ScannerErr> {
+        let mut str_val = String::new();
         while !self.is_end_of_string()? {
-            if matches!(self.peek(), Ok('\n')) {
+            let chr = self.advance().expect(BUG_END_OF_SOURCE);
+            if chr == '\n' {
                 return Err(self.make_err(ScannerErrKind::UnterminatedString));
             }
 
-            self.advance().expect(BUG_END_OF_SOURCE);
+            if chr == '\\' {
+                let value = match self.advance()? {
+                    '"' => '"',
+                    '/' => '/',
+                    'b' => '\x08',
+                    'f' => '\x0C',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    '\\' => '\\',
+                    'u' => {
+                        // Unicode character - read next 4 hex values and parse
+                        let mut hex = String::with_capacity(4);
+                        for _ in 0..4 {
+                            hex.push(self.advance()?);
+                        }
+
+                        // Covnert hex string to unicode char
+                        let digit = u32::from_str_radix(&hex, 16)
+                            .map_err(|_| self.make_err(ScannerErrKind::InvalidEscapeSequence))?;
+                        let unicode = char::from_u32(digit)
+                            .ok_or(self.make_err(ScannerErrKind::InvalidEscapeSequence))?;
+
+                        unicode
+                    }
+                    _ => return Err(self.make_err(ScannerErrKind::InvalidEscapeSequence)),
+                };
+
+                str_val.push(value);
+                continue;
+            }
+
+            str_val.push(chr);
         }
 
         self.advance().expect(BUG_END_OF_SOURCE);
-        let unquoted_value = &self.source[self.token_start + 1..self.current - 1];
-        return Ok(self.make_token(TokenKind::String(unquoted_value.to_string())));
+        return Ok(self.make_token(TokenKind::String(str_val)));
     }
 
     fn keyword(&mut self) -> Result<Token, ScannerErr> {
@@ -350,6 +386,42 @@ mod tests {
             ("notkeyword", ScannerErrKind::UnrecognisedKeyword),
             ("_", ScannerErrKind::UnrecognisedSymbol),
             ("^", ScannerErrKind::UnrecognisedSymbol),
+        ];
+
+        for (source, expected) in cases {
+            let mut scanner = Scanner::init(source);
+            assert_eq!(Err(expected), scanner.next_token().map_err(|x| x.kind));
+        }
+    }
+
+    #[test]
+    fn test_valid_escape_sequences() {
+        let cases = vec![
+            (r#""\u00A9""#, "©"),
+            (r#""\n""#, "\n"),
+            (r#""\r""#, "\r"),
+            (r#""\b""#, "\x08"),
+            (r#""\/""#, "/"),
+            (r#""\\""#, "\\"),
+        ];
+
+        for (source, expected) in cases {
+            let mut scanner = Scanner::init(source);
+            let token = scanner.next_token();
+
+            assert!(matches!(
+                token,
+                Ok(Some(Token { kind: TokenKind::String(ref s), .. })) if s == expected
+            ));
+        }
+    }
+
+    #[test]
+    fn test_invalid_escape_sequences() {
+        let cases = vec![
+            (r#""\uZZZZ""#, ScannerErrKind::InvalidEscapeSequence),
+            (r#""\uD800""#, ScannerErrKind::InvalidEscapeSequence),
+            (r#""bad\escape""#, ScannerErrKind::InvalidEscapeSequence),
         ];
 
         for (source, expected) in cases {

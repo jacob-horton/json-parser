@@ -39,7 +39,7 @@
 			"success": false
 		}
 	],
-	"unicodeExample": "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"",
+	"unicodeExample": "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n",
 	"numbers": {
 		"int": 42,
 		"float": 3.14159,
