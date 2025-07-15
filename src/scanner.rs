@@ -6,14 +6,14 @@ static BUG_FAILED_PARSE_NUMBER: &'static str =
 static BUG_PREV_BEFORE_ADVANCE: &'static str =
     "[BUG] Called `prev` before advancing - no previous value";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ScannerErr {
     pub kind: ScannerErrKind,
     pub line: usize,
     pub lexeme: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ScannerErrKind {
     UnexpectedEndOfSource,
     UnterminatedString,
@@ -256,5 +256,112 @@ impl<'a> Scanner<'a> {
         }
 
         return self.symbol().map(|x| Some(x));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_individual_tokens() {
+        let cases = vec![
+            ("[", TokenKind::LBracket),
+            ("]", TokenKind::RBracket),
+            ("{", TokenKind::LCurlyBracket),
+            ("}", TokenKind::RCurlyBracket),
+            (":", TokenKind::Colon),
+            (",", TokenKind::Comma),
+            ("1234", TokenKind::Int(1234)),
+            ("1234e5", TokenKind::Float(1234e5)),
+            ("1234.567", TokenKind::Float(1234.567)),
+            ("1234.567e5", TokenKind::Float(1234.567e5)),
+            ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
+            ("true", TokenKind::Boolean(true)),
+            ("false", TokenKind::Boolean(false)),
+            ("null", TokenKind::Null),
+        ];
+
+        for (source, expected) in cases {
+            let mut scanner = Scanner::init(source);
+            assert_eq!(
+                Ok(Some(expected)),
+                scanner.next_token().map(|x| x.map(|y| y.kind))
+            );
+        }
+    }
+
+    #[test]
+    fn test_multiple_tokens() {
+        let mut scanner = Scanner::init("{ 1234 12.34 \"hi\" true false null [] }");
+        let expected = vec![
+            TokenKind::LCurlyBracket,
+            TokenKind::Int(1234),
+            TokenKind::Float(12.34),
+            TokenKind::String("hi".to_string()),
+            TokenKind::Boolean(true),
+            TokenKind::Boolean(false),
+            TokenKind::Null,
+            TokenKind::LBracket,
+            TokenKind::RBracket,
+            TokenKind::RCurlyBracket,
+        ];
+
+        for token in expected {
+            assert_eq!(
+                Ok(Some(token)),
+                scanner.next_token().map(|x| x.map(|y| y.kind))
+            );
+        }
+    }
+
+    #[test]
+    fn test_whitespace() {
+        let mut scanner =
+            Scanner::init("{\t\n1234 12.34 \"hi\"\n   \t  \n true \r\n false \rnull [] }");
+        let expected = vec![
+            TokenKind::LCurlyBracket,
+            TokenKind::Int(1234),
+            TokenKind::Float(12.34),
+            TokenKind::String("hi".to_string()),
+            TokenKind::Boolean(true),
+            TokenKind::Boolean(false),
+            TokenKind::Null,
+            TokenKind::LBracket,
+            TokenKind::RBracket,
+            TokenKind::RCurlyBracket,
+        ];
+
+        for token in expected {
+            assert_eq!(
+                Ok(Some(token)),
+                scanner.next_token().map(|x| x.map(|y| y.kind))
+            );
+        }
+    }
+
+    #[test]
+    fn test_invalid_tokens() {
+        let cases = vec![
+            ("\"unterminated\n", ScannerErrKind::UnterminatedString),
+            ("\"end of source", ScannerErrKind::UnexpectedEndOfSource),
+            ("1234e", ScannerErrKind::InvalidNumber),
+            ("1234a", ScannerErrKind::InvalidNumber),
+            ("notkeyword", ScannerErrKind::UnrecognisedKeyword),
+            ("_", ScannerErrKind::UnrecognisedSymbol),
+            ("^", ScannerErrKind::UnrecognisedSymbol),
+        ];
+
+        for (source, expected) in cases {
+            let mut scanner = Scanner::init(source);
+            assert_eq!(Err(expected), scanner.next_token().map_err(|x| x.kind));
+        }
+    }
+
+    #[test]
+    fn test_next_token_at_end() {
+        let mut scanner = Scanner::init("\"one_token\"");
+        assert!(matches!(scanner.next_token(), Ok(Some(_))));
+        assert!(matches!(scanner.next_token(), Ok(None)));
     }
 }
