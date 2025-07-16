@@ -116,6 +116,18 @@ impl<'a> Scanner<'a> {
         false
     }
 
+    fn matches_any(&mut self, chars: &[char]) -> bool {
+        // If not end of source and character matches, return true
+        for c in chars {
+            if matches!(self.peek(), Ok(chr) if chr == *c) {
+                self.advance().expect(BUG_END_OF_SOURCE);
+                return true;
+            }
+        }
+
+        false
+    }
+
     fn number(&mut self) -> Result<Token, ScannerErr> {
         let mut is_float = false;
 
@@ -144,11 +156,8 @@ impl<'a> Scanner<'a> {
 
                 self.advance().expect(BUG_END_OF_SOURCE);
 
-                // TODO: do this in a more comprehensible way
                 // Consume `-` or `+` if it exists
-                if !self.matches('-') {
-                    self.matches('+');
-                }
+                self.matches_any(&['-', '+']);
 
                 while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
                     self.advance().expect(BUG_END_OF_SOURCE);
@@ -310,8 +319,11 @@ mod tests {
             (",", TokenKind::Comma),
             ("1234", TokenKind::Int(1234)),
             ("1234e5", TokenKind::Float(1234e5)),
+            ("1234E5", TokenKind::Float(1234e5)),
             ("1234.567", TokenKind::Float(1234.567)),
             ("1234.567e5", TokenKind::Float(1234.567e5)),
+            ("1234.567e+5", TokenKind::Float(1234.567e5)),
+            ("1234.567e-5", TokenKind::Float(1234.567e-5)),
             ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
             ("true", TokenKind::Boolean(true)),
             ("false", TokenKind::Boolean(false)),
