@@ -70,15 +70,6 @@ pub struct Numbers {
 }
 
 fn main() {
-    let result: Result<Root, _> = Parser::parse(include_str!("test_data/test_blob.json"));
-    // let result = Test::parse_json(r#"{"name": "hi", "age": 3}"#);
+    let result = Parser::parse::<Root>(include_str!("test_data/test_blob.json"));
     println!("{result:#?}");
-
-    // let parsed = Parser::parse("").unwrap();
-    // let result = match parsed {
-    //     Any::Object(data) => data,
-    //     _ => panic!("Not an object"),
-    // };
-    //
-    // let result = result.props.get("").unwrap();
 }

@@ -146,9 +146,9 @@ impl<'a> Parser<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Any {
-    Object(Object),
-    Array(Array),
+pub enum JsonValue {
+    Object(HashMap<String, JsonValue>),
+    Array(Vec<JsonValue>),
 
     String(String),
     Number(f64),
@@ -156,12 +156,12 @@ pub enum Any {
     Null,
 }
 
-impl Parse for Any {
+impl Parse for JsonValue {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let token = parser.peek()?;
         let ast = match token.kind {
-            TokenKind::LCurlyBracket => Self::Object(Object::parse(parser)?),
-            TokenKind::LBracket => Self::Array(Array::parse(parser)?),
+            TokenKind::LCurlyBracket => Self::Object(<HashMap<String, JsonValue>>::parse(parser)?),
+            TokenKind::LBracket => Self::Array(<Vec<JsonValue>>::parse(parser)?),
             TokenKind::String(_) => Self::String(String::parse(parser)?),
             TokenKind::Number => Self::Number(f64::parse(parser)?),
             TokenKind::Bool => Self::Bool(bool::parse(parser)?),
@@ -277,10 +277,10 @@ impl<T: Parse> Parse for Option<T> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
-    pub props: HashMap<String, Any>,
+    pub props: HashMap<String, JsonValue>,
 }
 
-impl Parse for Object {
+impl<T: Parse> Parse for HashMap<String, T> {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         parser.consume(TokenKind::LCurlyBracket)?;
 
@@ -294,7 +294,7 @@ impl Parse for Object {
                 TokenKind::String(name) => {
                     parser.consume(TokenKind::Colon)?;
 
-                    let value = Any::parse(parser)?;
+                    let value = T::parse(parser)?;
                     props.insert(name, value);
 
                     // Once no comma at end, we have reached end of object
@@ -316,47 +316,11 @@ impl Parse for Object {
 
         parser.consume(TokenKind::RCurlyBracket)?;
 
-        Ok(Self { props })
+        Ok(props)
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Array {
-    pub elems: Vec<Any>,
-}
-
-impl Parse for Array {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        parser.consume(TokenKind::LBracket)?;
-
-        let mut elems = Vec::new();
-        let mut had_comma = false;
-
-        // Loop through all elements, until reaching closing bracket
-        while !parser.check(TokenKind::RBracket)? {
-            let elem = Any::parse(parser)?;
-            elems.push(elem);
-
-            // Once no comma at end, we have reached end of array
-            had_comma = parser.check(TokenKind::Comma)?;
-            if had_comma {
-                parser.advance()?;
-            } else {
-                break;
-            }
-        }
-
-        // No trailing comma
-        if had_comma {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
-        }
-
-        parser.consume(TokenKind::RBracket)?;
-
-        Ok(Self { elems })
-    }
-}
-
+// TODO: tests for specific types (not just Any)
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -364,21 +328,16 @@ mod tests {
     #[test]
     fn test_top_level() {
         let cases = vec![
-            ("[]", Any::Array(Array { elems: vec![] })),
-            (
-                "{}",
-                Any::Object(Object {
-                    props: HashMap::new(),
-                }),
-            ),
-            ("1234", Any::Number(1234.0)),
-            ("1234e5", Any::Number(1234e5)),
-            ("1234.567", Any::Number(1234.567)),
-            ("1234.567e5", Any::Number(1234.567e5)),
-            (r#""str a_b""#, Any::String("str a_b".to_string())),
-            ("true", Any::Bool(true)),
-            ("false", Any::Bool(false)),
-            ("null", Any::Null),
+            ("[]", JsonValue::Array(vec![])),
+            ("{}", JsonValue::Object(HashMap::new())),
+            ("1234", JsonValue::Number(1234.0)),
+            ("1234e5", JsonValue::Number(1234e5)),
+            ("1234.567", JsonValue::Number(1234.567)),
+            ("1234.567e5", JsonValue::Number(1234.567e5)),
+            (r#""str a_b""#, JsonValue::String("str a_b".to_string())),
+            ("true", JsonValue::Bool(true)),
+            ("false", JsonValue::Bool(false)),
+            ("null", JsonValue::Null),
         ];
 
         for (source, expected) in cases {
@@ -390,12 +349,15 @@ mod tests {
     #[test]
     fn test_object() {
         let expected_props = HashMap::from([
-            ("name".to_string(), Any::String("Jane Doe".to_string())),
-            ("age".to_string(), Any::Number(32.0)),
+            (
+                "name".to_string(),
+                JsonValue::String("Jane Doe".to_string()),
+            ),
+            ("age".to_string(), JsonValue::Number(32.0)),
         ]);
         let result = Parser::parse(r#"{"name": "Jane Doe", "age": 32}"#);
-        if let Ok(Any::Object(obj)) = result {
-            assert_eq!(expected_props, obj.props);
+        if let Ok(JsonValue::Object(obj)) = result {
+            assert_eq!(expected_props, obj);
         } else {
             panic!("Expected 'Ok(Any::Object(_))', got '{result:?}'");
         }
@@ -404,15 +366,15 @@ mod tests {
     #[test]
     fn test_array() {
         let expected_elems = vec![
-            Any::String("first".to_string()),
-            Any::String("second".to_string()),
-            Any::Number(3.0),
-            Any::Bool(true),
+            JsonValue::String("first".to_string()),
+            JsonValue::String("second".to_string()),
+            JsonValue::Number(3.0),
+            JsonValue::Bool(true),
         ];
 
         let result = Parser::parse(r#"["first", "second", 3, true]"#);
-        if let Ok(Any::Array(arr)) = result {
-            assert_eq!(expected_elems, arr.elems);
+        if let Ok(JsonValue::Array(arr)) = result {
+            assert_eq!(expected_elems, arr);
         } else {
             panic!("Expected 'Ok(Any::Object(_))', got '{result:?}'");
         }
@@ -423,121 +385,119 @@ mod tests {
         let source = include_str!("test_data/test_blob.json");
         let result = Parser::parse(source);
 
-        let expected = Any::Object(Object {
-            props: HashMap::from([
-                ("name".to_string(), Any::String("Jane Doe".to_string())),
-                ("age".to_string(), Any::Number(32.0)),
-                ("is_verified".to_string(), Any::Bool(true)),
-                ("balance".to_string(), Any::Number(10457.89)),
-                ("nickname".to_string(), Any::Null),
-                (
-                    "contact".to_string(),
-                    Any::Object(Object {
-                        props: HashMap::from([
-                            (
-                                "email".to_string(),
-                                Any::String("jane.doe@example.com".to_string()),
-                            ),
-                            (
-                                "phone".to_string(),
-                                Any::String("+1-555-123-4567".to_string()),
-                            ),
-                            (
-                                "address".to_string(),
-                                Any::Object(Object {
-                                    props: HashMap::from([
-                                        (
-                                            "street".to_string(),
-                                            Any::String("123 Maple Street".to_string()),
-                                        ),
-                                        (
-                                            "city".to_string(),
-                                            Any::String("Springfield".to_string()),
-                                        ),
-                                        ("zipcode".to_string(), Any::String("12345".to_string())),
-                                        ("country".to_string(), Any::String("USA".to_string())),
-                                    ]),
-                                }),
-                            ),
-                        ]),
-                    }),
-                ),
-                (
-                    "preferences".to_string(),
-                    Any::Object(Object {
-                        props: HashMap::from([
-                            (
-                                "notifications".to_string(),
-                                Any::Object(Object {
-                                    props: HashMap::from([
-                                        ("email".to_string(), Any::Bool(true)),
-                                        ("sms".to_string(), Any::Bool(false)),
-                                    ]),
-                                }),
-                            ),
-                            ("theme".to_string(), Any::String("dark".to_string())),
-                            ("language".to_string(), Any::String("en-US".to_string())),
-                        ]),
-                    }),
-                ),
-                (
-                    "tags".to_string(),
-                    Any::Array(Array {
-                        elems: vec![
-                            Any::String("user".to_string()),
-                            Any::String("admin".to_string()),
-                            Any::String("editor".to_string()),
-                        ],
-                    }),
-                ),
-                (
-                    "history".to_string(),
-                    Any::Array(Array {
-                        elems: vec![
-                            Any::Object(Object {
-                                props: HashMap::from([
-                                    (
-                                        "login".to_string(),
-                                        Any::String("2025-07-01T12:34:56Z".to_string()),
-                                    ),
-                                    ("ip".to_string(), Any::String("192.168.1.1".to_string())),
-                                    ("success".to_string(), Any::Bool(true)),
-                                ]),
-                            }),
-                            Any::Object(Object {
-                                props: HashMap::from([
-                                    (
-                                        "login".to_string(),
-                                        Any::String("2025-06-30T08:21:12Z".to_string()),
-                                    ),
-                                    ("ip".to_string(), Any::String("192.168.1.2".to_string())),
-                                    ("success".to_string(), Any::Bool(false)),
-                                ]),
-                            }),
-                        ],
-                    }),
-                ),
-                (
-                    "unicode_example".to_string(),
-                    Any::String(
-                        "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n".to_string(),
+        let expected = JsonValue::Object(HashMap::from([
+            (
+                "name".to_string(),
+                JsonValue::String("Jane Doe".to_string()),
+            ),
+            ("age".to_string(), JsonValue::Number(32.0)),
+            ("is_verified".to_string(), JsonValue::Bool(true)),
+            ("balance".to_string(), JsonValue::Number(10457.89)),
+            ("nickname".to_string(), JsonValue::Null),
+            (
+                "contact".to_string(),
+                JsonValue::Object(HashMap::from([
+                    (
+                        "email".to_string(),
+                        JsonValue::String("jane.doe@example.com".to_string()),
                     ),
+                    (
+                        "phone".to_string(),
+                        JsonValue::String("+1-555-123-4567".to_string()),
+                    ),
+                    (
+                        "address".to_string(),
+                        JsonValue::Object(HashMap::from([
+                            (
+                                "street".to_string(),
+                                JsonValue::String("123 Maple Street".to_string()),
+                            ),
+                            (
+                                "city".to_string(),
+                                JsonValue::String("Springfield".to_string()),
+                            ),
+                            (
+                                "zipcode".to_string(),
+                                JsonValue::String("12345".to_string()),
+                            ),
+                            ("country".to_string(), JsonValue::String("USA".to_string())),
+                        ])),
+                    ),
+                ])),
+            ),
+            (
+                "preferences".to_string(),
+                JsonValue::Object(HashMap::from([
+                    (
+                        "notifications".to_string(),
+                        JsonValue::Object(HashMap::from([
+                            ("email".to_string(), JsonValue::Bool(true)),
+                            ("sms".to_string(), JsonValue::Bool(false)),
+                        ])),
+                    ),
+                    ("theme".to_string(), JsonValue::String("dark".to_string())),
+                    (
+                        "language".to_string(),
+                        JsonValue::String("en-US".to_string()),
+                    ),
+                ])),
+            ),
+            (
+                "tags".to_string(),
+                JsonValue::Array(vec![
+                    JsonValue::String("user".to_string()),
+                    JsonValue::String("admin".to_string()),
+                    JsonValue::String("editor".to_string()),
+                ]),
+            ),
+            (
+                "history".to_string(),
+                JsonValue::Array(vec![
+                    JsonValue::Object(HashMap::from([
+                        (
+                            "login".to_string(),
+                            JsonValue::String("2025-07-01T12:34:56Z".to_string()),
+                        ),
+                        (
+                            "ip".to_string(),
+                            JsonValue::String("192.168.1.1".to_string()),
+                        ),
+                        ("success".to_string(), JsonValue::Bool(true)),
+                    ])),
+                    JsonValue::Object(HashMap::from([
+                        (
+                            "login".to_string(),
+                            JsonValue::String("2025-06-30T08:21:12Z".to_string()),
+                        ),
+                        (
+                            "ip".to_string(),
+                            JsonValue::String("192.168.1.2".to_string()),
+                        ),
+                        ("success".to_string(), JsonValue::Bool(false)),
+                    ])),
+                ]),
+            ),
+            (
+                "unicode_example".to_string(),
+                JsonValue::String(
+                    "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n".to_string(),
                 ),
-                (
-                    "numbers".to_string(),
-                    Any::Object(Object {
-                        props: HashMap::from([
-                            ("int".to_string(), Any::Number(42.0)),
-                            ("float".to_string(), Any::Number(3.14159)),
-                            ("scientific".to_string(), Any::Number(6.022e23)),
-                            ("scientific_no_decimal".to_string(), Any::Number(6e5)),
-                            ("negative".to_string(), Any::Number(-5.0)),
-                            ("negative_scientific".to_string(), Any::Number(-5.1e-10)),
-                        ]),
-                    }),
-                ),
-            ]),
-        });
+            ),
+            (
+                "numbers".to_string(),
+                JsonValue::Object(HashMap::from([
+                    ("int".to_string(), JsonValue::Number(42.0)),
+                    ("float".to_string(), JsonValue::Number(3.14159)),
+                    ("scientific".to_string(), JsonValue::Number(6.022e23)),
+                    ("scientific_no_decimal".to_string(), JsonValue::Number(6e5)),
+                    ("negative".to_string(), JsonValue::Number(-5.0)),
+                    (
+                        "negative_scientific".to_string(),
+                        JsonValue::Number(-5.1e-10),
+                    ),
+                ])),
+            ),
+        ]));
 
         assert_eq!(Ok(expected), result);
     }
@@ -586,7 +546,7 @@ mod tests {
         ];
 
         for (source, expected) in cases {
-            let result = Parser::parse::<Any>(source);
+            let result = Parser::parse::<JsonValue>(source);
             assert_eq!(
                 Err(expected),
                 result.map_err(|x| x.kind),

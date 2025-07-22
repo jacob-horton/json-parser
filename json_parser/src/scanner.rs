@@ -290,6 +290,7 @@ impl<'a> Scanner<'a> {
     }
 }
 
+// TODO: check lexemes, not just kinds
 #[cfg(test)]
 mod tests {
     use super::*;
