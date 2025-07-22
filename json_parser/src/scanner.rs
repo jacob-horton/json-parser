@@ -129,8 +129,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn number(&mut self) -> Result<Token, ScannerErr> {
-        let mut is_float = false;
-
         // Consume digits - we already know we've got an initial one
         while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
             self.advance().expect(BUG_END_OF_SOURCE);
@@ -139,7 +137,6 @@ impl<'a> Scanner<'a> {
         // If reach a `.`, include it and continue matching digits
         // We know it is a float at this point
         if self.matches('.') {
-            is_float = true;
             while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
                 self.advance().expect(BUG_END_OF_SOURCE);
             }
@@ -150,8 +147,6 @@ impl<'a> Scanner<'a> {
         // Allow scientific notation e.g. 10e5
         if let Ok(c) = next_char {
             if c == 'e' || c == 'E' {
-                // If using scientific notation, it is a float
-                is_float = true;
                 let mut has_number_after_e = false;
 
                 self.advance().expect(BUG_END_OF_SOURCE);
@@ -177,15 +172,9 @@ impl<'a> Scanner<'a> {
             return Err(self.make_err(ScannerErrKind::InvalidNumber));
         }
 
-        let token_kind = if is_float {
-            let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
-            TokenKind::Float(literal)
-        } else {
-            let literal = lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER);
-            TokenKind::Int(literal)
-        };
-
-        Ok(self.make_token(token_kind))
+        Ok(self.make_token(TokenKind::Number(
+            lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER),
+        )))
     }
 
     fn is_end_of_string(&self) -> Result<bool, ScannerErr> {
@@ -317,13 +306,13 @@ mod tests {
             ("}", TokenKind::RCurlyBracket),
             (":", TokenKind::Colon),
             (",", TokenKind::Comma),
-            ("1234", TokenKind::Int(1234)),
-            ("1234e5", TokenKind::Float(1234e5)),
-            ("1234E5", TokenKind::Float(1234e5)),
-            ("1234.567", TokenKind::Float(1234.567)),
-            ("1234.567e5", TokenKind::Float(1234.567e5)),
-            ("1234.567e+5", TokenKind::Float(1234.567e5)),
-            ("1234.567e-5", TokenKind::Float(1234.567e-5)),
+            ("1234", TokenKind::Number(1234.0)),
+            ("1234e5", TokenKind::Number(1234e5)),
+            ("1234E5", TokenKind::Number(1234e5)),
+            ("1234.567", TokenKind::Number(1234.567)),
+            ("1234.567e5", TokenKind::Number(1234.567e5)),
+            ("1234.567e+5", TokenKind::Number(1234.567e5)),
+            ("1234.567e-5", TokenKind::Number(1234.567e-5)),
             ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
             ("true", TokenKind::Bool(true)),
             ("false", TokenKind::Bool(false)),
@@ -344,8 +333,8 @@ mod tests {
         let mut scanner = Scanner::init("{ 1234 12.34 \"hi\" true false null [] }");
         let expected = vec![
             TokenKind::LCurlyBracket,
-            TokenKind::Int(1234),
-            TokenKind::Float(12.34),
+            TokenKind::Number(1234.0),
+            TokenKind::Number(12.34),
             TokenKind::String("hi".to_string()),
             TokenKind::Bool(true),
             TokenKind::Bool(false),
@@ -369,8 +358,8 @@ mod tests {
             Scanner::init("{\t\n1234 12.34 \"hi\"\n   \t  \n true \r\n false \rnull [] }");
         let expected = vec![
             TokenKind::LCurlyBracket,
-            TokenKind::Int(1234),
-            TokenKind::Float(12.34),
+            TokenKind::Number(1234.0),
+            TokenKind::Number(12.34),
             TokenKind::String("hi".to_string()),
             TokenKind::Bool(true),
             TokenKind::Bool(false),

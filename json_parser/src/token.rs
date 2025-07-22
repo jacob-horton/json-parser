@@ -27,8 +27,7 @@ pub enum TokenKind {
     Comma,
 
     String(String),
-    Float(f64),
-    Int(i64),
+    Number(f64),
     Bool(bool),
     Null,
 }

@@ -151,8 +151,7 @@ pub enum Any {
     Array(Array),
 
     String(String),
-    Float(f64),
-    Int(i64),
+    Number(f64),
     Bool(bool),
     Null,
 }
@@ -164,8 +163,7 @@ impl Parse for Any {
             TokenKind::LCurlyBracket => Self::Object(Object::parse(parser)?),
             TokenKind::LBracket => Self::Array(Array::parse(parser)?),
             TokenKind::String(_) => Self::String(String::parse(parser)?),
-            TokenKind::Float(_) => Self::Float(f64::parse(parser)?),
-            TokenKind::Int(_) => Self::Int(i64::parse(parser)?),
+            TokenKind::Number(_) => Self::Number(f64::parse(parser)?),
             TokenKind::Bool(_) => Self::Bool(bool::parse(parser)?),
             TokenKind::Null => {
                 parser.advance()?;
@@ -190,7 +188,7 @@ impl Parse for String {
 
 impl Parse for f64 {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::Float(val) = parser.advance()?.kind {
+        if let TokenKind::Number(val) = parser.advance()?.kind {
             return Ok(val);
         } else {
             return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
@@ -200,8 +198,12 @@ impl Parse for f64 {
 
 impl Parse for i64 {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::Int(val) = parser.advance()?.kind {
-            return Ok(val);
+        if let TokenKind::Number(val) = parser.advance()?.kind {
+            if val.fract() != 0.0 {
+                panic!("Cannot convert float to int");
+            }
+
+            return Ok(val as i64);
         } else {
             return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
         }
@@ -358,10 +360,10 @@ mod tests {
                     props: HashMap::new(),
                 }),
             ),
-            ("1234", Any::Int(1234)),
-            ("1234e5", Any::Float(1234e5)),
-            ("1234.567", Any::Float(1234.567)),
-            ("1234.567e5", Any::Float(1234.567e5)),
+            ("1234", Any::Number(1234.0)),
+            ("1234e5", Any::Number(1234e5)),
+            ("1234.567", Any::Number(1234.567)),
+            ("1234.567e5", Any::Number(1234.567e5)),
             (r#""str a_b""#, Any::String("str a_b".to_string())),
             ("true", Any::Bool(true)),
             ("false", Any::Bool(false)),
@@ -378,7 +380,7 @@ mod tests {
     fn test_object() {
         let expected_props = HashMap::from([
             ("name".to_string(), Any::String("Jane Doe".to_string())),
-            ("age".to_string(), Any::Int(32)),
+            ("age".to_string(), Any::Number(32.0)),
         ]);
         let result = Parser::parse(r#"{"name": "Jane Doe", "age": 32}"#);
         if let Ok(Any::Object(obj)) = result {
@@ -393,7 +395,7 @@ mod tests {
         let expected_elems = vec![
             Any::String("first".to_string()),
             Any::String("second".to_string()),
-            Any::Int(3),
+            Any::Number(3.0),
             Any::Bool(true),
         ];
 
@@ -413,9 +415,9 @@ mod tests {
         let expected = Any::Object(Object {
             props: HashMap::from([
                 ("name".to_string(), Any::String("Jane Doe".to_string())),
-                ("age".to_string(), Any::Int(32)),
-                ("isVerified".to_string(), Any::Bool(true)),
-                ("balance".to_string(), Any::Float(10457.89)),
+                ("age".to_string(), Any::Number(32.0)),
+                ("is_verified".to_string(), Any::Bool(true)),
+                ("balance".to_string(), Any::Number(10457.89)),
                 ("nickname".to_string(), Any::Null),
                 (
                     "contact".to_string(),
@@ -505,7 +507,7 @@ mod tests {
                     }),
                 ),
                 (
-                    "unicodeExample".to_string(),
+                    "unicode_example".to_string(),
                     Any::String(
                         "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n".to_string(),
                     ),
@@ -514,12 +516,12 @@ mod tests {
                     "numbers".to_string(),
                     Any::Object(Object {
                         props: HashMap::from([
-                            ("int".to_string(), Any::Int(42)),
-                            ("float".to_string(), Any::Float(3.14159)),
-                            ("scientific".to_string(), Any::Float(6.022e23)),
-                            ("scientific_no_decimal".to_string(), Any::Float(6e5)),
-                            ("negative".to_string(), Any::Int(-5)),
-                            ("negative_scientific".to_string(), Any::Float(-5.1e-10)),
+                            ("int".to_string(), Any::Number(42.0)),
+                            ("float".to_string(), Any::Number(3.14159)),
+                            ("scientific".to_string(), Any::Number(6.022e23)),
+                            ("scientific_no_decimal".to_string(), Any::Number(6e5)),
+                            ("negative".to_string(), Any::Number(-5.0)),
+                            ("negative_scientific".to_string(), Any::Number(-5.1e-10)),
                         ]),
                     }),
                 ),
