@@ -1,10 +1,7 @@
 use crate::token::{Token, TokenKind};
 
-static BUG_END_OF_SOURCE: &'static str = "[BUG] Reached end of source when shouldn't be possible";
-static BUG_FAILED_PARSE_NUMBER: &'static str =
-    "[BUG] Failed to parse number when already validated";
-static BUG_PREV_BEFORE_ADVANCE: &'static str =
-    "[BUG] Called `prev` before advancing - no previous value";
+static BUG_END_OF_SOURCE: &str = "[BUG] Reached end of source when shouldn't be possible";
+static BUG_PREV_BEFORE_ADVANCE: &str = "[BUG] Called `prev` before advancing - no previous value";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ScannerErr {
@@ -130,14 +127,14 @@ impl<'a> Scanner<'a> {
 
     fn number(&mut self) -> Result<Token, ScannerErr> {
         // Consume digits - we already know we've got an initial one
-        while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+        while matches!(self.peek(), Ok(c) if c.is_ascii_digit()) {
             self.advance().expect(BUG_END_OF_SOURCE);
         }
 
         // If reach a `.`, include it and continue matching digits
         // We know it is a float at this point
         if self.matches('.') {
-            while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+            while matches!(self.peek(), Ok(c) if c.is_ascii_digit()) {
                 self.advance().expect(BUG_END_OF_SOURCE);
             }
         }
@@ -154,7 +151,7 @@ impl<'a> Scanner<'a> {
                 // Consume `-` or `+` if it exists
                 self.matches_any(&['-', '+']);
 
-                while matches!(self.peek(), Ok(c) if c.is_digit(10)) {
+                while matches!(self.peek(), Ok(c) if c.is_ascii_digit()) {
                     self.advance().expect(BUG_END_OF_SOURCE);
                     has_number_after_e = true;
                 }
@@ -183,7 +180,7 @@ impl<'a> Scanner<'a> {
             return Ok(false);
         }
 
-        return Ok(true);
+        Ok(true)
     }
 
     fn string(&mut self) -> Result<Token, ScannerErr> {
@@ -214,10 +211,9 @@ impl<'a> Scanner<'a> {
                         // Covnert hex string to unicode char
                         let digit = u32::from_str_radix(&hex, 16)
                             .map_err(|_| self.make_err(ScannerErrKind::InvalidEscapeSequence))?;
-                        let unicode = char::from_u32(digit)
-                            .ok_or(self.make_err(ScannerErrKind::InvalidEscapeSequence))?;
 
-                        unicode
+                        char::from_u32(digit)
+                            .ok_or(self.make_err(ScannerErrKind::InvalidEscapeSequence))?
                     }
                     _ => return Err(self.make_err(ScannerErrKind::InvalidEscapeSequence)),
                 };
@@ -230,7 +226,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.advance().expect(BUG_END_OF_SOURCE);
-        return Ok(self.make_token(TokenKind::String(str_val)));
+        Ok(self.make_token(TokenKind::String(str_val)))
     }
 
     fn keyword(&mut self) -> Result<Token, ScannerErr> {
@@ -274,19 +270,19 @@ impl<'a> Scanner<'a> {
 
         let c = self.advance()?;
 
-        if c.is_digit(10) || c == '-' {
-            return self.number().map(|x| Some(x));
+        if c.is_ascii_digit() || c == '-' {
+            return self.number().map(Some);
         }
 
         if c.is_alphabetic() {
-            return self.keyword().map(|x| Some(x));
+            return self.keyword().map(Some);
         }
 
         if c == '"' {
-            return self.string().map(|x| Some(x));
+            return self.string().map(Some);
         }
 
-        return self.symbol().map(|x| Some(x));
+        self.symbol().map(Some)
     }
 }
 

@@ -5,9 +5,9 @@ use crate::{
     token::{Token, TokenKind},
 };
 
-static BUG_PREV_BEFORE_ADVANCE: &'static str =
+static BUG_PREV_BEFORE_ADVANCE: &str =
     "[BUG] Called `prev` before advancing - no previous value";
-static BUG_NO_TOKEN_ERR_REPORT: &'static str = "[BUG] Failed to get token for reporting error";
+static BUG_NO_TOKEN_ERR_REPORT: &str = "[BUG] Failed to get token for reporting error";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ParserErr {
@@ -45,11 +45,11 @@ impl From<ScannerErr> for ParserErr {
             ScannerErrKind::InvalidEscapeSequence => ParserErrKind::InvalidEscapeSequence,
         };
 
-        return Self {
+        Self {
             line: err.line,
             lexeme: err.lexeme,
             kind,
-        };
+        }
     }
 }
 
@@ -67,7 +67,7 @@ pub struct Parser<'a> {
     current: Option<Token>,
 }
 
-impl<'a> Parser<'a> {
+impl Parser<'_> {
     fn make_err(&self, kind: ParserErrKind) -> ParserErr {
         // Get current token, fallback to previous
         let err_token = self
@@ -119,29 +119,29 @@ impl<'a> Parser<'a> {
             return Ok(());
         }
 
-        return Err(self.make_err(ParserErrKind::ExpectedToken(kind)));
+        Err(self.make_err(ParserErrKind::ExpectedToken(kind)))
     }
 
     pub fn check(&self, kind: TokenKind) -> Result<bool, ParserErr> {
-        return Ok(self.peek()?.kind == kind);
+        Ok(self.peek()?.kind == kind)
     }
 
     fn peek(&self) -> Result<Token, ParserErr> {
-        return self
+        self
             .current
             .clone()
-            .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource));
+            .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource))
     }
 
     pub fn advance(&mut self) -> Result<Token, ParserErr> {
         self.prev = self.current.clone();
         self.current = self.scanner.next_token()?;
 
-        return Ok(self.previous());
+        Ok(self.previous())
     }
 
     fn previous(&self) -> Token {
-        return self.prev.clone().expect(BUG_PREV_BEFORE_ADVANCE);
+        self.prev.clone().expect(BUG_PREV_BEFORE_ADVANCE)
     }
 }
 
@@ -179,9 +179,9 @@ impl Parse for JsonValue {
 impl Parse for String {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         if let TokenKind::String(val) = parser.advance()?.kind {
-            return Ok(val);
+            Ok(val)
         } else {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
         }
     }
 }
@@ -209,12 +209,12 @@ impl<T: JsonNumber> Parse for T {
         let token = parser.advance()?;
         match token.kind {
             TokenKind::Number => {
-                return token
+                token
                     .lexeme
                     .parse::<T>()
-                    .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber));
+                    .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber))
             }
-            _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
+            _ => Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
         }
     }
 }
@@ -224,9 +224,9 @@ impl Parse for bool {
         let token = parser.advance()?;
         if let TokenKind::Bool = token.kind {
             // NOTE: should only be "true" or "false", which is why we can do this
-            return Ok(token.lexeme == "true");
+            Ok(token.lexeme == "true")
         } else {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
         }
     }
 }
@@ -268,7 +268,7 @@ impl<T: Parse> Parse for Option<T> {
         match parser.peek()?.kind {
             TokenKind::Null => {
                 parser.consume(TokenKind::Null)?;
-                return Ok(None);
+                Ok(None)
             }
             _ => Ok(Some(T::parse(parser)?)),
         }
