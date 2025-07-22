@@ -1,7 +1,7 @@
 {
 	"name": "Jane Doe",
 	"age": 32,
-	"isVerified": true,
+	"is_verified": true,
 	"balance": 10457.89,
 	"nickname": null,
 	"contact": {
@@ -39,7 +39,7 @@
 			"success": false
 		}
 	],
-	"unicodeExample": "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n",
+	"unicode_example": "Emoji test: 😄, 中文, العربية, escape test: \\n\\t\\\"\n",
 	"numbers": {
 		"int": 42,
 		"float": 3.14159,
