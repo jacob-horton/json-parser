@@ -1,4 +1,2 @@
-[package]
-name = "json-parser"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["json_parser", "json_parser_macros"]

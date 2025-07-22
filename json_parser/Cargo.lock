@@ -3,14 +3,7 @@
 version = 4
 
 [[package]]
-name = "json_parser"
-version = "0.1.0"
-dependencies = [
- "json_parser_macros",
-]
-
-[[package]]
-name = "json_parser_macros"
+name = "json-parser"
 version = "0.1.0"
 dependencies = [
  "quote",

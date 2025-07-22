@@ -254,8 +254,8 @@ impl<'a> Scanner<'a> {
         let keyword = &self.source[self.token_start..self.current];
         let kind = match keyword {
             "null" => TokenKind::Null,
-            "true" => TokenKind::Boolean(true),
-            "false" => TokenKind::Boolean(false),
+            "true" => TokenKind::Bool(true),
+            "false" => TokenKind::Bool(false),
             _ => Err(self.make_err(ScannerErrKind::UnrecognisedKeyword))?,
         };
 
@@ -325,8 +325,8 @@ mod tests {
             ("1234.567e+5", TokenKind::Float(1234.567e5)),
             ("1234.567e-5", TokenKind::Float(1234.567e-5)),
             ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
-            ("true", TokenKind::Boolean(true)),
-            ("false", TokenKind::Boolean(false)),
+            ("true", TokenKind::Bool(true)),
+            ("false", TokenKind::Bool(false)),
             ("null", TokenKind::Null),
         ];
 
@@ -347,8 +347,8 @@ mod tests {
             TokenKind::Int(1234),
             TokenKind::Float(12.34),
             TokenKind::String("hi".to_string()),
-            TokenKind::Boolean(true),
-            TokenKind::Boolean(false),
+            TokenKind::Bool(true),
+            TokenKind::Bool(false),
             TokenKind::Null,
             TokenKind::LBracket,
             TokenKind::RBracket,
@@ -372,8 +372,8 @@ mod tests {
             TokenKind::Int(1234),
             TokenKind::Float(12.34),
             TokenKind::String("hi".to_string()),
-            TokenKind::Boolean(true),
-            TokenKind::Boolean(false),
+            TokenKind::Bool(true),
+            TokenKind::Bool(false),
             TokenKind::Null,
             TokenKind::LBracket,
             TokenKind::RBracket,

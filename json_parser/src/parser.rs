@@ -53,7 +53,7 @@ impl From<ScannerErr> for ParserErr {
     }
 }
 
-trait Parse {
+pub trait Parse {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr>
     where
         Self: Sized;
@@ -93,7 +93,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(source: &str) -> Result<Any, ParserErr> {
+    pub fn parse<T: Parse>(source: &str) -> Result<T, ParserErr> {
         let mut scanner = Scanner::init(source);
         let current = scanner.next_token()?;
 
@@ -103,7 +103,7 @@ impl<'a> Parser<'a> {
             prev: None,
         };
 
-        let result = Any::parse(&mut parser)?;
+        let result = T::parse(&mut parser)?;
         if parser.current.is_some() {
             return Err(parser.make_err(ParserErrKind::ExpectedEndOfSource));
         }
@@ -157,29 +157,86 @@ pub enum Any {
 
 impl Parse for Any {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        let token = parser.advance()?;
+        let token = parser.peek()?;
         let ast = match token.kind {
             TokenKind::LCurlyBracket => Self::Object(Object::parse(parser)?),
             TokenKind::LBracket => Self::Array(Array::parse(parser)?),
-            TokenKind::String(x) => Self::String(x),
-            TokenKind::Float(x) => Self::Float(x),
-            TokenKind::Int(x) => Self::Int(x),
-            TokenKind::Boolean(x) => Self::Bool(x),
-            TokenKind::Null => Self::Null,
-            _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
+            TokenKind::String(_) => Self::String(String::parse(parser)?),
+            TokenKind::Float(_) => Self::Float(f64::parse(parser)?),
+            TokenKind::Int(_) => Self::Int(i64::parse(parser)?),
+            TokenKind::Bool(_) => Self::Bool(bool::parse(parser)?),
+            TokenKind::Null => {
+                parser.advance()?;
+                Self::Null
+            }
+            _ => return Err(parser.make_err(ParserErrKind::UnexpectedToken)),
         };
 
         Ok(ast)
     }
 }
 
+impl Parse for String {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        if let TokenKind::String(val) = parser.advance()?.kind {
+            return Ok(val);
+        } else {
+            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+        }
+    }
+}
+
+impl Parse for f64 {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        if let TokenKind::Float(val) = parser.advance()?.kind {
+            return Ok(val);
+        } else {
+            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+        }
+    }
+}
+
+impl Parse for i64 {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        if let TokenKind::Int(val) = parser.advance()?.kind {
+            return Ok(val);
+        } else {
+            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+        }
+    }
+}
+
+impl Parse for bool {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        if let TokenKind::Bool(val) = parser.advance()?.kind {
+            return Ok(val);
+        } else {
+            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+        }
+    }
+}
+
+impl<T: Parse> Parse for Option<T> {
+    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        match parser.peek()?.kind {
+            TokenKind::Null => {
+                parser.consume(TokenKind::Null)?;
+                return Ok(None);
+            }
+            _ => Ok(Some(T::parse(parser)?)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object {
-    props: HashMap<String, Any>,
+    pub props: HashMap<String, Any>,
 }
 
 impl Parse for Object {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        parser.consume(TokenKind::LCurlyBracket)?;
+
         let mut props = HashMap::new();
         let mut had_comma = false;
 
@@ -218,11 +275,13 @@ impl Parse for Object {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Array {
-    elems: Vec<Any>,
+    pub elems: Vec<Any>,
 }
 
 impl Parse for Array {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+        parser.consume(TokenKind::LBracket)?;
+
         let mut elems = Vec::new();
         let mut had_comma = false;
 
@@ -480,7 +539,7 @@ mod tests {
         ];
 
         for (source, expected) in cases {
-            let result = Parser::parse(source);
+            let result = Parser::parse::<Any>(source);
             assert_eq!(
                 Err(expected),
                 result.map_err(|x| x.kind),
