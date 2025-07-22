@@ -3,8 +3,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Error, Fields, parse_macro_input};
 
-// TODO: try generating parsing code from struct instead of validating
-
 #[proc_macro_derive(JsonDeserialise)]
 pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -31,44 +29,90 @@ pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
     };
 
     let struct_name = input.ident;
-    let field_debugs = fields.named.iter().map(|f| {
+
+    let fields_struct_types = fields.named.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
         let field_type = &f.ty;
 
         quote! {
-            println!("Field: {:?}, Type: {:?}", stringify!(#field_name), stringify!(#field_type));
+            #field_name: Option<#field_type>
         }
     });
 
-    let prop_validators = fields.named.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap();
-        let field_value = 32u64;
-
-        quote! {#field_name: #field_value}
+    let fields_struct_init = fields.named.iter().map(|f| {
+        let ident = f.ident.as_ref().unwrap();
+        quote! {
+            #ident: None
+        }
     });
 
-    let constructor = fields.named.iter().map(|f| {
+    let field_branches = fields.named.iter().map(|f| {
         let field_name = f.ident.as_ref().unwrap();
-        let field_value = 32u64;
+        let field_type = &f.ty;
 
-        quote! {#field_name: #field_value}
+        quote! {
+            stringify!(#field_name) => parsed_fields.#field_name = Some(<#field_type>::parse(parser)?),
+        }
+    });
+
+    let constructor_fields = fields.named.iter().map(|f| {
+        let field_name = f.ident.as_ref().unwrap();
+
+        quote! {#field_name: parsed_fields.#field_name.expect(&format!("Missing field: {}", stringify!(#field_name)))}
     });
 
     // TODO: properly handle errors
     let expanded = quote! {
-        impl #struct_name {
-            fn parse_json(source: &str) -> Result<Self, ParserErr> {
-                let parsed = Parser::parse(source).unwrap();
-                let obj = match parsed {
-                    Any::Object(data) => data,
-                    _ => panic!("Not an object"),
-                };
-                println!("{obj:?}");
+        impl Parse for #struct_name {
+            fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
+                parser.consume(TokenKind::LCurlyBracket)?;
 
-                #(#field_debugs)*
+                let mut had_comma = false;
+
+                let mut parsed_fields = {
+                    struct ParsedFields {
+                        #( #fields_struct_types, )*
+                    }
+
+                    ParsedFields {
+                        #( #fields_struct_init, )*
+                    }
+                };
+
+                // Loop through all properties, until reaching closing bracket
+                while !parser.check(TokenKind::RCurlyBracket)? {
+                    let token = parser.advance()?;
+                    match token.kind {
+                        TokenKind::String(name) => {
+                            parser.consume(TokenKind::Colon)?;
+
+                            // Assign variables
+                            match name.as_str() {
+                                #(#field_branches)*
+                                _ => panic!("Unknown field: {name}"),
+                            };
+
+                            // Once no comma at end, we have reached end of object
+                            had_comma = parser.check(TokenKind::Comma)?;
+                            if had_comma {
+                                parser.advance()?;
+                            } else {
+                                break;
+                            }
+                        }
+                        _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
+                    }
+                }
+
+                // No trailing comma
+                if had_comma {
+                    return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+                }
+
+                parser.consume(TokenKind::RCurlyBracket)?;
 
                 return Ok(#struct_name {
-                    #(#constructor),*
+                    #(#constructor_fields),*
                 });
             }
         }

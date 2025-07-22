@@ -82,8 +82,10 @@ impl<'a> Parser<'a> {
         }
     }
 
+    // TODO: make all these private somehow
+
     // Make err with prev token instead of current
-    fn make_err_prev(&self, kind: ParserErrKind) -> ParserErr {
+    pub fn make_err_prev(&self, kind: ParserErrKind) -> ParserErr {
         let err_token = self.prev.clone().expect(BUG_NO_TOKEN_ERR_REPORT);
 
         ParserErr {
@@ -111,7 +113,7 @@ impl<'a> Parser<'a> {
         Ok(result)
     }
 
-    fn consume(&mut self, kind: TokenKind) -> Result<(), ParserErr> {
+    pub fn consume(&mut self, kind: TokenKind) -> Result<(), ParserErr> {
         if self.check(kind.clone())? {
             self.advance()?;
             return Ok(());
@@ -120,7 +122,7 @@ impl<'a> Parser<'a> {
         return Err(self.make_err(ParserErrKind::ExpectedToken(kind)));
     }
 
-    fn check(&self, kind: TokenKind) -> Result<bool, ParserErr> {
+    pub fn check(&self, kind: TokenKind) -> Result<bool, ParserErr> {
         return Ok(self.peek()?.kind == kind);
     }
 
@@ -131,7 +133,7 @@ impl<'a> Parser<'a> {
             .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource));
     }
 
-    fn advance(&mut self) -> Result<Token, ParserErr> {
+    pub fn advance(&mut self) -> Result<Token, ParserErr> {
         self.prev = self.current.clone();
         self.current = self.scanner.next_token()?;
 
