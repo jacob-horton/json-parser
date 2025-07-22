@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, str::FromStr};
 
 use crate::{
     scanner::{Scanner, ScannerErr, ScannerErrKind},
@@ -163,8 +163,8 @@ impl Parse for Any {
             TokenKind::LCurlyBracket => Self::Object(Object::parse(parser)?),
             TokenKind::LBracket => Self::Array(Array::parse(parser)?),
             TokenKind::String(_) => Self::String(String::parse(parser)?),
-            TokenKind::Number(_) => Self::Number(f64::parse(parser)?),
-            TokenKind::Bool(_) => Self::Bool(bool::parse(parser)?),
+            TokenKind::Number => Self::Number(f64::parse(parser)?),
+            TokenKind::Bool => Self::Bool(bool::parse(parser)?),
             TokenKind::Null => {
                 parser.advance()?;
                 Self::Null
@@ -186,34 +186,45 @@ impl Parse for String {
     }
 }
 
-impl Parse for f64 {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::Number(val) = parser.advance()?.kind {
-            return Ok(val);
-        } else {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
-        }
-    }
-}
+// Define a trait so we can specify which number types we want to be parsable
+pub trait JsonNumber: Sized + FromStr {}
 
-impl Parse for i64 {
+impl JsonNumber for i128 {}
+impl JsonNumber for i64 {}
+impl JsonNumber for i32 {}
+impl JsonNumber for i16 {}
+impl JsonNumber for i8 {}
+
+impl JsonNumber for u128 {}
+impl JsonNumber for u64 {}
+impl JsonNumber for u32 {}
+impl JsonNumber for u16 {}
+impl JsonNumber for u8 {}
+
+impl JsonNumber for f64 {}
+impl JsonNumber for f32 {}
+
+impl<T: JsonNumber> Parse for T {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::Number(val) = parser.advance()?.kind {
-            if val.fract() != 0.0 {
-                panic!("Cannot convert float to int");
+        let token = parser.advance()?;
+        match token.kind {
+            TokenKind::Number => {
+                return token
+                    .lexeme
+                    .parse::<T>()
+                    .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber));
             }
-
-            return Ok(val as i64);
-        } else {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
+            _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
         }
     }
 }
 
 impl Parse for bool {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::Bool(val) = parser.advance()?.kind {
-            return Ok(val);
+        let token = parser.advance()?;
+        if let TokenKind::Bool = token.kind {
+            // NOTE: should only be "true" or "false", which is why we can do this
+            return Ok(token.lexeme == "true");
         } else {
             return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
         }

@@ -172,9 +172,7 @@ impl<'a> Scanner<'a> {
             return Err(self.make_err(ScannerErrKind::InvalidNumber));
         }
 
-        Ok(self.make_token(TokenKind::Number(
-            lexeme.parse().expect(BUG_FAILED_PARSE_NUMBER),
-        )))
+        Ok(self.make_token(TokenKind::Number))
     }
 
     fn is_end_of_string(&self) -> Result<bool, ScannerErr> {
@@ -243,8 +241,7 @@ impl<'a> Scanner<'a> {
         let keyword = &self.source[self.token_start..self.current];
         let kind = match keyword {
             "null" => TokenKind::Null,
-            "true" => TokenKind::Bool(true),
-            "false" => TokenKind::Bool(false),
+            "true" | "false" => TokenKind::Bool,
             _ => Err(self.make_err(ScannerErrKind::UnrecognisedKeyword))?,
         };
 
@@ -306,16 +303,16 @@ mod tests {
             ("}", TokenKind::RCurlyBracket),
             (":", TokenKind::Colon),
             (",", TokenKind::Comma),
-            ("1234", TokenKind::Number(1234.0)),
-            ("1234e5", TokenKind::Number(1234e5)),
-            ("1234E5", TokenKind::Number(1234e5)),
-            ("1234.567", TokenKind::Number(1234.567)),
-            ("1234.567e5", TokenKind::Number(1234.567e5)),
-            ("1234.567e+5", TokenKind::Number(1234.567e5)),
-            ("1234.567e-5", TokenKind::Number(1234.567e-5)),
+            ("1234", TokenKind::Number),
+            ("1234e5", TokenKind::Number),
+            ("1234E5", TokenKind::Number),
+            ("1234.567", TokenKind::Number),
+            ("1234.567e5", TokenKind::Number),
+            ("1234.567e+5", TokenKind::Number),
+            ("1234.567e-5", TokenKind::Number),
             ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
-            ("true", TokenKind::Bool(true)),
-            ("false", TokenKind::Bool(false)),
+            ("true", TokenKind::Bool),
+            ("false", TokenKind::Bool),
             ("null", TokenKind::Null),
         ];
 
@@ -333,11 +330,11 @@ mod tests {
         let mut scanner = Scanner::init("{ 1234 12.34 \"hi\" true false null [] }");
         let expected = vec![
             TokenKind::LCurlyBracket,
-            TokenKind::Number(1234.0),
-            TokenKind::Number(12.34),
+            TokenKind::Number,
+            TokenKind::Number,
             TokenKind::String("hi".to_string()),
-            TokenKind::Bool(true),
-            TokenKind::Bool(false),
+            TokenKind::Bool,
+            TokenKind::Bool,
             TokenKind::Null,
             TokenKind::LBracket,
             TokenKind::RBracket,
@@ -358,11 +355,11 @@ mod tests {
             Scanner::init("{\t\n1234 12.34 \"hi\"\n   \t  \n true \r\n false \rnull [] }");
         let expected = vec![
             TokenKind::LCurlyBracket,
-            TokenKind::Number(1234.0),
-            TokenKind::Number(12.34),
+            TokenKind::Number,
+            TokenKind::Number,
             TokenKind::String("hi".to_string()),
-            TokenKind::Bool(true),
-            TokenKind::Bool(false),
+            TokenKind::Bool,
+            TokenKind::Bool,
             TokenKind::Null,
             TokenKind::LBracket,
             TokenKind::RBracket,

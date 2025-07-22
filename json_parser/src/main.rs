@@ -12,7 +12,7 @@ mod token;
 #[derive(Debug, JsonDeserialise)]
 pub struct Root {
     pub name: String,
-    pub age: i64,
+    pub age: u32,
     pub is_verified: bool,
     pub balance: f64,
     pub nickname: Option<String>,

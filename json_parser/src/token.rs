@@ -26,8 +26,10 @@ pub enum TokenKind {
     Colon,
     Comma,
 
+    // Stores unescaped, dequoted value
     String(String),
-    Number(f64),
-    Bool(bool),
+
+    Number,
+    Bool,
     Null,
 }
