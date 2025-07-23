@@ -2,6 +2,3 @@
 name = "json_parser"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-json_parser_macros = { path = "../json_parser_macros" }

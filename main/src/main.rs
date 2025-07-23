@@ -1,13 +1,5 @@
-use crate::parser::Parse;
-use crate::parser::Parser;
-use crate::parser::ParserErr;
-use crate::parser::ParserErrKind;
-use crate::token::TokenKind;
+use json_parser::*;
 use json_parser_macros::JsonDeserialise;
-
-mod parser;
-mod scanner;
-mod token;
 
 #[derive(Debug, JsonDeserialise)]
 pub struct Root {

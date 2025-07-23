@@ -1,3 +1,3 @@
 [workspace]
-members = ["json_parser", "json_parser_macros"]
+members = ["json_parser", "json_parser_macros", "main"]
 resolver = "3"
