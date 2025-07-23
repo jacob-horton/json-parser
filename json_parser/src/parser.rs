@@ -149,7 +149,6 @@ impl Parser<'_> {
     }
 }
 
-// TODO: tests for specific types (not just Any)
 #[cfg(test)]
 mod tests {
     use crate::json_value::JsonValue;

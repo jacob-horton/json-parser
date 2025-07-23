@@ -286,7 +286,6 @@ impl<'a> Scanner<'a> {
     }
 }
 
-// TODO: check lexemes, not just kinds
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -413,15 +412,50 @@ mod tests {
 
     #[test]
     fn test_invalid_escape_sequences() {
-        let cases = vec![
-            (r#""\uZZZZ""#, ScannerErrKind::InvalidEscapeSequence),
-            (r#""\uD800""#, ScannerErrKind::InvalidEscapeSequence),
-            (r#""bad\escape""#, ScannerErrKind::InvalidEscapeSequence),
-        ];
+        let cases = vec![r#""\uZZZZ""#, r#""\uD800""#, r#""bad\escape""#];
 
-        for (source, expected) in cases {
+        for source in cases {
             let mut scanner = Scanner::init(source);
-            assert_eq!(Err(expected), scanner.next_token().map_err(|x| x.kind));
+            assert_eq!(
+                Err(ScannerErrKind::InvalidEscapeSequence),
+                scanner.next_token().map_err(|x| x.kind)
+            );
+        }
+    }
+
+    #[test]
+    fn test_line_numbers() {
+        let source = "\"line 1\" \"still line 1\"\n2\n\r\n4\r\t4";
+        let expected = vec![1, 1, 2, 4, 4];
+        let mut scanner = Scanner::init(source);
+
+        for line in expected {
+            assert_eq!(line, scanner.next_token().unwrap().unwrap().line);
+        }
+    }
+
+    #[test]
+    fn test_lexemes() {
+        let source = "\"lexeme 1\" \"lexeme 2\" 3 4 true";
+        let expected = vec!["\"lexeme 1\"", "\"lexeme 2\"", "3", "4", "true"];
+        let mut scanner = Scanner::init(source);
+
+        for lexeme in expected {
+            assert_eq!(lexeme, scanner.next_token().unwrap().unwrap().lexeme);
+        }
+    }
+
+    #[test]
+    fn test_string_contents() {
+        let source = r#""str 1" "str\t 2" "str 3 😀""#;
+        let expected = vec!["str 1", "str\t 2", "str 3 😀"];
+        let mut scanner = Scanner::init(source);
+
+        for str_contents in expected {
+            assert_eq!(
+                TokenKind::String(str_contents.to_string()),
+                scanner.next_token().unwrap().unwrap().kind
+            );
         }
     }
 

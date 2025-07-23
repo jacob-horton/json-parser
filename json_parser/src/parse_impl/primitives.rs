@@ -44,3 +44,82 @@ impl Parse for bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::ParserErrKind;
+
+    use super::*;
+
+    #[test]
+    fn test_signed_int() {
+        let result = Parser::parse::<i64>("-5");
+        assert_eq!(Ok(-5), result);
+    }
+
+    #[test]
+    fn test_unsigned_int() {
+        let result = Parser::parse::<u16>("5");
+        assert_eq!(Ok(5), result);
+    }
+
+    #[test]
+    fn test_unsigned_int_negative() {
+        let result = Parser::parse::<u32>("-5");
+        assert_eq!(
+            Err(ParserErr {
+                kind: ParserErrKind::InvalidNumber,
+                line: 1,
+                lexeme: "-5".to_string(),
+            }),
+            result
+        );
+    }
+
+    #[test]
+    fn test_float() {
+        let result = Parser::parse::<f32>("-5.1");
+        assert_eq!(Ok(-5.1), result);
+    }
+
+    #[test]
+    fn test_scientific_notation() {
+        let result = Parser::parse::<f32>("-5.1e-2");
+        assert_eq!(Ok(-5.1e-2), result);
+    }
+
+    #[test]
+    fn test_int_scientific_notation() {
+        let result = Parser::parse::<i32>("5e2");
+        assert_eq!(
+            Err(ParserErr {
+                kind: ParserErrKind::InvalidNumber,
+                line: 1,
+                lexeme: "5e2".to_string(),
+            }),
+            result
+        );
+    }
+
+    #[test]
+    fn test_bool() {
+        let result = Parser::parse::<bool>("true");
+        assert_eq!(Ok(true), result);
+
+        let result = Parser::parse::<bool>("false");
+        assert_eq!(Ok(false), result);
+    }
+
+    #[test]
+    fn test_bool_invalid() {
+        let result = Parser::parse::<bool>("null");
+        assert_eq!(
+            Err(ParserErr {
+                kind: ParserErrKind::UnexpectedToken,
+                line: 1,
+                lexeme: "null".to_string(),
+            }),
+            result
+        );
+    }
+}
