@@ -1,5 +1,3 @@
-use std::{collections::HashMap, str::FromStr};
-
 use crate::{
     scanner::{Scanner, ScannerErr, ScannerErrKind},
     token::{Token, TokenKind},
@@ -35,6 +33,7 @@ pub enum ParserErrKind {
     UnexpectedEndOfSource,
 }
 
+// Convert ScannerErr to ParserErr (easy 1 to 1 mapping)
 impl From<ScannerErr> for ParserErr {
     fn from(err: ScannerErr) -> Self {
         let kind = match err.kind {
@@ -132,7 +131,7 @@ impl Parser<'_> {
         Ok(self.peek()?.kind == kind)
     }
 
-    fn peek(&self) -> Result<Token, ParserErr> {
+    pub fn peek(&self) -> Result<Token, ParserErr> {
         self.current
             .clone()
             .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource))
@@ -145,187 +144,17 @@ impl Parser<'_> {
         Ok(self.previous())
     }
 
-    fn previous(&self) -> Token {
+    pub fn previous(&self) -> Token {
         self.prev.clone().expect(BUG_PREV_BEFORE_ADVANCE)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum JsonValue {
-    Object(HashMap<String, JsonValue>),
-    Array(Vec<JsonValue>),
-
-    String(String),
-    Number(f64),
-    Bool(bool),
-    Null,
-}
-
-impl Parse for JsonValue {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        let token = parser.peek()?;
-        let ast = match token.kind {
-            TokenKind::LCurlyBracket => Self::Object(<HashMap<String, JsonValue>>::parse(parser)?),
-            TokenKind::LBracket => Self::Array(<Vec<JsonValue>>::parse(parser)?),
-            TokenKind::String(_) => Self::String(String::parse(parser)?),
-            TokenKind::Number => Self::Number(f64::parse(parser)?),
-            TokenKind::Bool => Self::Bool(bool::parse(parser)?),
-            TokenKind::Null => {
-                parser.advance()?;
-                Self::Null
-            }
-            _ => return Err(parser.make_err(ParserErrKind::UnexpectedToken)),
-        };
-
-        Ok(ast)
-    }
-}
-
-impl Parse for String {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::String(val) = parser.advance()?.kind {
-            Ok(val)
-        } else {
-            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
-        }
-    }
-}
-
-// Define a trait so we can specify which number types we want to be parsable
-pub trait JsonNumber: Sized + FromStr {}
-
-impl JsonNumber for i128 {}
-impl JsonNumber for i64 {}
-impl JsonNumber for i32 {}
-impl JsonNumber for i16 {}
-impl JsonNumber for i8 {}
-
-impl JsonNumber for u128 {}
-impl JsonNumber for u64 {}
-impl JsonNumber for u32 {}
-impl JsonNumber for u16 {}
-impl JsonNumber for u8 {}
-
-impl JsonNumber for f64 {}
-impl JsonNumber for f32 {}
-
-impl<T: JsonNumber> Parse for T {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        let token = parser.advance()?;
-        match token.kind {
-            TokenKind::Number => token
-                .lexeme
-                .parse::<T>()
-                .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber)),
-            _ => Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
-        }
-    }
-}
-
-impl Parse for bool {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        let token = parser.advance()?;
-        if let TokenKind::Bool = token.kind {
-            // NOTE: should only be "true" or "false", which is why we can do this
-            Ok(token.lexeme == "true")
-        } else {
-            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
-        }
-    }
-}
-
-impl<T: Parse> Parse for Vec<T> {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        parser.consume(TokenKind::LBracket)?;
-
-        let mut elems = Vec::new();
-        let mut had_comma = false;
-
-        // Loop through all elements, until reaching closing bracket
-        while !parser.check(TokenKind::RBracket)? {
-            let elem = T::parse(parser)?;
-            elems.push(elem);
-
-            // Once no comma at end, we have reached end of array
-            had_comma = parser.check(TokenKind::Comma)?;
-            if had_comma {
-                parser.advance()?;
-            } else {
-                break;
-            }
-        }
-
-        // No trailing comma
-        if had_comma {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
-        }
-
-        parser.consume(TokenKind::RBracket)?;
-
-        Ok(elems)
-    }
-}
-
-impl<T: Parse> Parse for Option<T> {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        match parser.peek()?.kind {
-            TokenKind::Null => {
-                parser.consume(TokenKind::Null)?;
-                Ok(None)
-            }
-            _ => Ok(Some(T::parse(parser)?)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Object {
-    pub props: HashMap<String, JsonValue>,
-}
-
-impl<T: Parse> Parse for HashMap<String, T> {
-    fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        parser.consume(TokenKind::LCurlyBracket)?;
-
-        let mut props = HashMap::new();
-        let mut had_comma = false;
-
-        // Loop through all properties, until reaching closing bracket
-        while !parser.check(TokenKind::RCurlyBracket)? {
-            let token = parser.advance()?;
-            match token.kind {
-                TokenKind::String(name) => {
-                    parser.consume(TokenKind::Colon)?;
-
-                    let value = T::parse(parser)?;
-                    props.insert(name, value);
-
-                    // Once no comma at end, we have reached end of object
-                    had_comma = parser.check(TokenKind::Comma)?;
-                    if had_comma {
-                        parser.advance()?;
-                    } else {
-                        break;
-                    }
-                }
-                _ => return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
-            }
-        }
-
-        // No trailing comma
-        if had_comma {
-            return Err(parser.make_err_prev(ParserErrKind::UnexpectedToken));
-        }
-
-        parser.consume(TokenKind::RCurlyBracket)?;
-
-        Ok(props)
     }
 }
 
 // TODO: tests for specific types (not just Any)
 #[cfg(test)]
 mod tests {
+    use crate::json_value::JsonValue;
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
