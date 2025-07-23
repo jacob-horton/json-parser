@@ -118,7 +118,7 @@ pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     match &input.data {
-        Data::Struct(data) => return derive_json_deserialise_struct(&input, data),
+        Data::Struct(data) => derive_json_deserialise_struct(&input, data),
         _ => panic!("Cannot derive JsonDeserialise on this type"),
-    };
+    }
 }

@@ -122,7 +122,7 @@ impl Parser<'_> {
 
     pub fn consume(&mut self, kind: TokenKind) -> Result<Token, ParserErr> {
         if self.check(kind.clone())? {
-            return Ok(self.advance()?);
+            return self.advance();
         }
 
         Err(self.make_err(ParserErrKind::ExpectedToken(kind)))
