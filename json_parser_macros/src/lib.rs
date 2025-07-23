@@ -1,74 +1,64 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Error, Fields, parse_macro_input};
+use syn::{Data, DataStruct, DeriveInput, Fields, parse_macro_input};
 
-#[proc_macro_derive(JsonDeserialise)]
-pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    // TODO: support enums
-    let schema = if let Data::Struct(data) = &input.data {
-        data
-    } else {
-        return Error::new_spanned(&input, "JSON deserialising can only be derived for structs")
-            .to_compile_error()
-            .into();
+fn derive_json_deserialise_struct(input: &DeriveInput, data: &DataStruct) -> TokenStream {
+    let fields = match &data.fields {
+        Fields::Named(data) => data,
+        _ => panic!(
+            "JSON deserialising can only be derived for named field structs (no tuple or unit structs)"
+        ),
     };
 
-    // TODO: support other structs
-    let fields = if let Fields::Named(data) = &schema.fields {
-        data
-    } else {
-        return syn::Error::new_spanned(
-            &input,
-            "JSON deserialising can only be derived for named field structs",
-        )
-        .to_compile_error()
-        .into();
-    };
+    let struct_name = &input.ident;
 
-    let struct_name = input.ident;
+    // Code generation
+    // fields_struct is a temporary object to store the field data when it's being parsed
+    // Each value is initialised to None, and set once it is found
+    let mut fields_struct_types = Vec::new();
+    let mut fields_struct_init = Vec::new();
 
-    let fields_struct_types = fields.named.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap();
-        let field_type = &f.ty;
+    // When we come across a property, set the value in the fields_struct
+    // If the value does not exist in the fields_struct, report an error
+    let mut field_setters = Vec::new();
 
-        quote! {
-            #field_name: Option<#field_type>
-        }
-    });
+    // Initialise the user's struct with the data collected
+    // If there is a field missing, report an error
+    let mut struct_init_lines = Vec::new();
 
-    let fields_struct_init = fields.named.iter().map(|f| {
-        let ident = f.ident.as_ref().unwrap();
-        quote! {
-            #ident: None
-        }
-    });
+    // Loop through each field
+    for field in &fields.named {
+        let name = field.ident.as_ref().unwrap();
+        let ty = &field.ty;
 
-    let field_branches = fields.named.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap();
-        let field_type = &f.ty;
+        // Generated code
+        let field_type = quote! { #name: Option<#ty> };
+        let field_init = quote! { #name: None };
+        let field_setter =
+            quote! { stringify!(#name) => parsed_fields.#name = Some(<#ty>::parse(parser)?), };
+        let struct_init_line = quote! {
+            #name: parsed_fields.#name.ok_or(
+                parser.make_err_from_token(ParserErrKind::MissingProperty(stringify!(#name).to_string()), &l_curly_token)
+            )?
+        };
 
-        quote! {
-            stringify!(#field_name) => parsed_fields.#field_name = Some(<#field_type>::parse(parser)?),
-        }
-    });
+        // Add to vecs
+        fields_struct_types.push(field_type);
+        fields_struct_init.push(field_init);
+        field_setters.push(field_setter);
+        struct_init_lines.push(struct_init_line);
+    }
 
-    let constructor_fields = fields.named.iter().map(|f| {
-        let field_name = f.ident.as_ref().unwrap();
-
-        quote! {#field_name: parsed_fields.#field_name.expect(&format!("Missing field: {}", stringify!(#field_name)))}
-    });
-
-    // TODO: properly handle errors
+    // Generated impl block
     let expanded = quote! {
         impl Parse for #struct_name {
             fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-                parser.consume(TokenKind::LCurlyBracket)?;
+                let l_curly_token = parser.consume(TokenKind::LCurlyBracket)?;
 
                 let mut had_comma = false;
 
+                // temporary object to store field data. Initialise all values to None
                 let mut parsed_fields = {
                     struct ParsedFields {
                         #( #fields_struct_types, )*
@@ -83,13 +73,13 @@ pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
                 while !parser.check(TokenKind::RCurlyBracket)? {
                     let token = parser.advance()?;
                     match token.kind {
-                        TokenKind::String(name) => {
+                        TokenKind::String(ref name) => {
                             parser.consume(TokenKind::Colon)?;
 
-                            // Assign variables
+                            // Assign the data to the parsed_fields struct
                             match name.as_str() {
-                                #(#field_branches)*
-                                _ => panic!("Unknown field: {name}"),
+                                #(#field_setters)*
+                                _ => return Err(parser.make_err_from_token(ParserErrKind::UnknownProperty, &token)),
                             };
 
                             // Once no comma at end, we have reached end of object
@@ -111,12 +101,24 @@ pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
 
                 parser.consume(TokenKind::RCurlyBracket)?;
 
+                // Convert parsed_fields into the user's struct
+                // If data is missing, return an error
                 return Ok(#struct_name {
-                    #(#constructor_fields),*
+                    #(#struct_init_lines),*
                 });
             }
         }
     };
 
     expanded.into()
+}
+
+#[proc_macro_derive(JsonDeserialise)]
+pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    match &input.data {
+        Data::Struct(data) => return derive_json_deserialise_struct(&input, data),
+        _ => panic!("Cannot derive JsonDeserialise on this type"),
+    };
 }

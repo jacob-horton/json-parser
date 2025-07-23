@@ -5,8 +5,7 @@ use crate::{
     token::{Token, TokenKind},
 };
 
-static BUG_PREV_BEFORE_ADVANCE: &str =
-    "[BUG] Called `prev` before advancing - no previous value";
+static BUG_PREV_BEFORE_ADVANCE: &str = "[BUG] Called `prev` before advancing - no previous value";
 static BUG_NO_TOKEN_ERR_REPORT: &str = "[BUG] Failed to get token for reporting error";
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,6 +28,8 @@ pub enum ParserErrKind {
     ExpectedEndOfSource,
     ExpectedToken(TokenKind),
     UnexpectedToken,
+    UnknownProperty,
+    MissingProperty(String),
 
     // Both
     UnexpectedEndOfSource,
@@ -68,7 +69,7 @@ pub struct Parser<'a> {
 }
 
 impl Parser<'_> {
-    fn make_err(&self, kind: ParserErrKind) -> ParserErr {
+    pub fn make_err(&self, kind: ParserErrKind) -> ParserErr {
         // Get current token, fallback to previous
         let err_token = self
             .current
@@ -82,7 +83,13 @@ impl Parser<'_> {
         }
     }
 
-    // TODO: make all these private somehow
+    pub fn make_err_from_token(&self, kind: ParserErrKind, token: &Token) -> ParserErr {
+        ParserErr {
+            kind,
+            line: token.line,
+            lexeme: token.lexeme.to_owned(),
+        }
+    }
 
     // Make err with prev token instead of current
     pub fn make_err_prev(&self, kind: ParserErrKind) -> ParserErr {
@@ -113,10 +120,9 @@ impl Parser<'_> {
         Ok(result)
     }
 
-    pub fn consume(&mut self, kind: TokenKind) -> Result<(), ParserErr> {
+    pub fn consume(&mut self, kind: TokenKind) -> Result<Token, ParserErr> {
         if self.check(kind.clone())? {
-            self.advance()?;
-            return Ok(());
+            return Ok(self.advance()?);
         }
 
         Err(self.make_err(ParserErrKind::ExpectedToken(kind)))
@@ -127,8 +133,7 @@ impl Parser<'_> {
     }
 
     fn peek(&self) -> Result<Token, ParserErr> {
-        self
-            .current
+        self.current
             .clone()
             .ok_or(self.make_err(ParserErrKind::UnexpectedEndOfSource))
     }
@@ -208,12 +213,10 @@ impl<T: JsonNumber> Parse for T {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let token = parser.advance()?;
         match token.kind {
-            TokenKind::Number => {
-                token
-                    .lexeme
-                    .parse::<T>()
-                    .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber))
-            }
+            TokenKind::Number => token
+                .lexeme
+                .parse::<T>()
+                .map_err(|_| parser.make_err_prev(ParserErrKind::InvalidNumber)),
             _ => Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
         }
     }
