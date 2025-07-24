@@ -40,8 +40,6 @@ impl<'a> Scanner<'a> {
 
     fn make_token(&mut self, kind: TokenKind) -> Token {
         let start = self.token_start;
-        self.token_start = self.current;
-
         Token::init(kind, self.line, &self.source[start..self.current])
     }
 
@@ -172,25 +170,15 @@ impl<'a> Scanner<'a> {
         Ok(self.make_token(TokenKind::Number))
     }
 
-    fn is_end_of_string(&self) -> Result<bool, ScannerErr> {
-        let next = self.peek()?;
-
-        // Not on a quote, so not end of string
-        if next != '"' {
-            return Ok(false);
-        }
-
-        Ok(true)
-    }
-
     fn string(&mut self) -> Result<Token, ScannerErr> {
         let mut str_val = String::new();
-        while !self.is_end_of_string()? {
+        while self.peek()? != '"' {
             let chr = self.advance().expect(BUG_END_OF_SOURCE);
             if chr == '\n' {
                 return Err(self.make_err(ScannerErrKind::UnterminatedString));
             }
 
+            // Escape sequences
             if chr == '\\' {
                 let value = match self.advance()? {
                     '"' => '"',
@@ -208,7 +196,7 @@ impl<'a> Scanner<'a> {
                             hex.push(self.advance()?);
                         }
 
-                        // Covnert hex string to unicode char
+                        // Convert hex string to unicode char
                         let digit = u32::from_str_radix(&hex, 16)
                             .map_err(|_| self.make_err(ScannerErrKind::InvalidEscapeSequence))?;
 
@@ -230,10 +218,12 @@ impl<'a> Scanner<'a> {
     }
 
     fn keyword(&mut self) -> Result<Token, ScannerErr> {
+        // Loop until not alphabetic character
         while matches!(self.peek(), Ok(c) if c.is_alphabetic()) {
             self.advance().expect(BUG_END_OF_SOURCE);
         }
 
+        // Check lexeme
         let keyword = &self.source[self.token_start..self.current];
         let kind = match keyword {
             "null" => TokenKind::Null,
@@ -300,12 +290,14 @@ mod tests {
             (":", TokenKind::Colon),
             (",", TokenKind::Comma),
             ("1234", TokenKind::Number),
+            ("-1234", TokenKind::Number),
             ("1234e5", TokenKind::Number),
             ("1234E5", TokenKind::Number),
             ("1234.567", TokenKind::Number),
             ("1234.567e5", TokenKind::Number),
             ("1234.567e+5", TokenKind::Number),
             ("1234.567e-5", TokenKind::Number),
+            ("-1234.567e-5", TokenKind::Number),
             ("\"str a_b\"", TokenKind::String("str a_b".to_string())),
             ("true", TokenKind::Bool),
             ("false", TokenKind::Bool),
