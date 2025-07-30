@@ -15,7 +15,7 @@ pub enum ScannerErrKind {
     UnexpectedEndOfSource,
     UnterminatedString,
     UnrecognisedSymbol,
-    UnrecognisedKeyword,
+    UnrecognisedLiteral,
     InvalidNumber,
     InvalidEscapeSequence,
 }
@@ -162,6 +162,7 @@ impl<'a> Scanner<'a> {
             }
         }
 
+        // Check that we have at least one digit, not just a `-`
         let lexeme = &self.source[self.token_start..self.current];
         if lexeme == "-" {
             return Err(self.make_err(ScannerErrKind::InvalidNumber));
@@ -217,18 +218,18 @@ impl<'a> Scanner<'a> {
         Ok(self.make_token(TokenKind::String(str_val)))
     }
 
-    fn keyword(&mut self) -> Result<Token, ScannerErr> {
+    fn literal(&mut self) -> Result<Token, ScannerErr> {
         // Loop until not alphabetic character
         while matches!(self.peek(), Ok(c) if c.is_alphabetic()) {
             self.advance().expect(BUG_END_OF_SOURCE);
         }
 
         // Check lexeme
-        let keyword = &self.source[self.token_start..self.current];
-        let kind = match keyword {
+        let literal = &self.source[self.token_start..self.current];
+        let kind = match literal {
             "null" => TokenKind::Null,
             "true" | "false" => TokenKind::Bool,
-            _ => Err(self.make_err(ScannerErrKind::UnrecognisedKeyword))?,
+            _ => Err(self.make_err(ScannerErrKind::UnrecognisedLiteral))?,
         };
 
         Ok(self.make_token(kind))
@@ -265,7 +266,7 @@ impl<'a> Scanner<'a> {
         }
 
         if c.is_alphabetic() {
-            return self.keyword().map(Some);
+            return self.literal().map(Some);
         }
 
         if c == '"' {
@@ -369,7 +370,7 @@ mod tests {
             ("\"end of source", ScannerErrKind::UnexpectedEndOfSource),
             ("1234e", ScannerErrKind::InvalidNumber),
             ("1234a", ScannerErrKind::InvalidNumber),
-            ("notkeyword", ScannerErrKind::UnrecognisedKeyword),
+            ("notliteral", ScannerErrKind::UnrecognisedLiteral),
             ("_", ScannerErrKind::UnrecognisedSymbol),
             ("^", ScannerErrKind::UnrecognisedSymbol),
         ];

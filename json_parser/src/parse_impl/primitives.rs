@@ -23,6 +23,8 @@ impl JsonNumber for f32 {}
 impl<T: JsonNumber> Parse for T {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let token = parser.advance()?;
+
+        // If we have a number, parse the lexeme (string) as an i32, and return that, or error if failed
         match token.kind {
             TokenKind::Number => token
                 .lexeme
@@ -36,11 +38,10 @@ impl<T: JsonNumber> Parse for T {
 impl Parse for bool {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
         let token = parser.advance()?;
-        if let TokenKind::Bool = token.kind {
+        match token.kind {
             // NOTE: should only be "true" or "false", which is why we can do this
-            Ok(token.lexeme == "true")
-        } else {
-            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
+            TokenKind::Bool => Ok(token.lexeme == "true"),
+            _ => Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
         }
     }
 }

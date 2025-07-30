@@ -2,10 +2,11 @@ use crate::{Parse, Parser, ParserErr, ParserErrKind, token::TokenKind};
 
 impl Parse for String {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        if let TokenKind::String(val) = parser.advance()?.kind {
-            Ok(val)
-        } else {
-            Err(parser.make_err_prev(ParserErrKind::UnexpectedToken))
+        // If we have a string, return the value captured by the scanner
+        // Otherwise, we expected a string, but didn't get one - error
+        match parser.advance()?.kind {
+            TokenKind::String(val) => Ok(val),
+            _ => Err(parser.make_err_prev(ParserErrKind::UnexpectedToken)),
         }
     }
 }

@@ -1,6 +1,6 @@
-mod json_value;
-mod parse_impl;
-mod parser;
+pub mod json_value;
+pub mod parse_impl;
+pub mod parser;
 mod scanner;
 mod token;
 

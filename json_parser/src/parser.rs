@@ -18,7 +18,7 @@ pub enum ParserErrKind {
     // Scanner specific errors
     UnterminatedString,
     UnrecognisedSymbol,
-    UnrecognisedKeyword,
+    UnrecognisedLiteral,
     InvalidNumber,
     InvalidEscapeSequence,
 
@@ -40,7 +40,7 @@ impl From<ScannerErr> for ParserErr {
             ScannerErrKind::UnexpectedEndOfSource => ParserErrKind::UnexpectedEndOfSource,
             ScannerErrKind::UnterminatedString => ParserErrKind::UnterminatedString,
             ScannerErrKind::UnrecognisedSymbol => ParserErrKind::UnrecognisedSymbol,
-            ScannerErrKind::UnrecognisedKeyword => ParserErrKind::UnrecognisedKeyword,
+            ScannerErrKind::UnrecognisedLiteral => ParserErrKind::UnrecognisedLiteral,
             ScannerErrKind::InvalidNumber => ParserErrKind::InvalidNumber,
             ScannerErrKind::InvalidEscapeSequence => ParserErrKind::InvalidEscapeSequence,
         };
@@ -226,7 +226,7 @@ mod tests {
             ),
             ("{ true: 5 }", ParserErrKind::UnexpectedToken),
             ("{ 10: 5 }", ParserErrKind::UnexpectedToken),
-            ("{ some_prop: 5 }", ParserErrKind::UnrecognisedKeyword),
+            ("{ some_prop: 5 }", ParserErrKind::UnrecognisedLiteral),
             ("^", ParserErrKind::UnrecognisedSymbol),
             (r#""unclosed string"#, ParserErrKind::UnexpectedEndOfSource),
             (
@@ -240,12 +240,12 @@ mod tests {
             (r#"{"key": "value""#, ParserErrKind::UnexpectedEndOfSource),
             ("[null,]", ParserErrKind::UnexpectedToken),
             (r#"{"a": null,}"#, ParserErrKind::UnexpectedToken),
-            ("tru", ParserErrKind::UnrecognisedKeyword),
-            ("nulll", ParserErrKind::UnrecognisedKeyword),
+            ("tru", ParserErrKind::UnrecognisedLiteral),
+            ("nulll", ParserErrKind::UnrecognisedLiteral),
             ("[--1]", ParserErrKind::InvalidNumber),
             ("[+1]", ParserErrKind::UnrecognisedSymbol),
             (r#"{null: "value"}"#, ParserErrKind::UnexpectedToken),
-            (r#"{"key": undefined}"#, ParserErrKind::UnrecognisedKeyword),
+            (r#"{"key": undefined}"#, ParserErrKind::UnrecognisedLiteral),
             (r#""\uZZZZ""#, ParserErrKind::InvalidEscapeSequence),
             (
                 r#"{"\uD800": "high surrogate only"}"#,

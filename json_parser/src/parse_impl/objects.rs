@@ -88,7 +88,7 @@ mod tests {
         let result = Parser::parse::<HashMap<String, JsonValue>>(r#"{prop: 5}"#);
         assert_eq!(
             Err(ParserErr {
-                kind: ParserErrKind::UnrecognisedKeyword,
+                kind: ParserErrKind::UnrecognisedLiteral,
                 line: 1,
                 lexeme: "prop".to_string(),
             }),
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn test_keyword_prop() {
+    fn test_literal_prop_key() {
         let result = Parser::parse::<HashMap<String, JsonValue>>(r#"{true: 5}"#);
         assert_eq!(
             Err(ParserErr {

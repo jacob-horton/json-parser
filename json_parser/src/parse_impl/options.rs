@@ -2,13 +2,14 @@ use crate::{Parse, Parser, ParserErr, token::TokenKind};
 
 impl<T: Parse> Parse for Option<T> {
     fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
-        match parser.peek()?.kind {
-            TokenKind::Null => {
-                parser.consume(TokenKind::Null)?;
-                Ok(None)
-            }
-            _ => Ok(Some(T::parse(parser)?)),
+        // If null, return `None`
+        if parser.check(TokenKind::Null)? {
+            parser.consume(TokenKind::Null)?;
+            return Ok(None);
         }
+
+        // Otherwise parse the inner type `T`
+        Ok(Some(T::parse(parser)?))
     }
 }
 
