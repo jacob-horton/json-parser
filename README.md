@@ -1,3 +1,6 @@
+[Blog Post Part 1](https://jacobhorton.dev/posts/2025/parsing-json-1/)
+[Blog Post Part 2](https://jacobhorton.dev/posts/2025/parsing-json-2/)
+
 # JSON Parser
 
 This is a JSON parser written in Rust as a learning exercise. It works similarly to [Serde](https://serde.rs/)
