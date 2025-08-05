@@ -13,11 +13,11 @@ impl<T: Parse> Parse for HashMap<String, T> {
         while !parser.check(TokenKind::RCurlyBracket)? {
             let token = parser.advance()?;
             match token.kind {
-                TokenKind::String(name) => {
+                TokenKind::String(key) => {
                     parser.consume(TokenKind::Colon)?;
 
                     let value = T::parse(parser)?;
-                    props.insert(name, value);
+                    props.insert(key, value);
 
                     // Once no comma at end, we have reached end of object
                     had_comma = parser.check(TokenKind::Comma)?;

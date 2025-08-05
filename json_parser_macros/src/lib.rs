@@ -1,17 +1,15 @@
 extern crate proc_macro;
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DataStruct, DeriveInput, Fields, parse_macro_input};
+use syn::{Data, DataStruct, DeriveInput, Fields, Ident};
 
-fn derive_json_deserialise_struct(input: &DeriveInput, data: &DataStruct) -> TokenStream {
+fn derive_json_deserialise_struct(struct_name: &Ident, data: &DataStruct) -> TokenStream {
     let fields = match &data.fields {
         Fields::Named(data) => data,
         _ => panic!(
             "JSON deserialising can only be derived for named field structs (no tuple or unit structs)"
         ),
     };
-
-    let struct_name = &input.ident;
 
     // Code generation
     // fields_struct is a temporary object to store the field data when it's being parsed
@@ -51,14 +49,14 @@ fn derive_json_deserialise_struct(input: &DeriveInput, data: &DataStruct) -> Tok
     }
 
     // Generated impl block
-    let expanded = quote! {
+    let generated_impl = quote! {
         impl Parse for #struct_name {
             fn parse(parser: &mut Parser) -> Result<Self, ParserErr> {
                 let l_curly_token = parser.consume(TokenKind::LCurlyBracket)?;
 
                 let mut had_comma = false;
 
-                // temporary object to store field data. Initialise all values to None
+                // Temporary object to store field data. Initialise all values to None
                 let mut parsed_fields = {
                     struct ParsedFields {
                         #( #fields_struct_types, )*
@@ -73,11 +71,11 @@ fn derive_json_deserialise_struct(input: &DeriveInput, data: &DataStruct) -> Tok
                 while !parser.check(TokenKind::RCurlyBracket)? {
                     let token = parser.advance()?;
                     match token.kind {
-                        TokenKind::String(ref name) => {
+                        TokenKind::String(ref key) => {
                             parser.consume(TokenKind::Colon)?;
 
                             // Assign the data to the parsed_fields struct
-                            match name.as_str() {
+                            match key.as_str() {
                                 #(#field_setters)*
                                 _ => return Err(parser.make_err_from_token(ParserErrKind::UnknownProperty, &token)),
                             };
@@ -110,15 +108,15 @@ fn derive_json_deserialise_struct(input: &DeriveInput, data: &DataStruct) -> Tok
         }
     };
 
-    expanded.into()
+    generated_impl.into()
 }
 
 #[proc_macro_derive(JsonDeserialise)]
 pub fn derive_json_deserialise(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
+    let input: DeriveInput = syn::parse(input).unwrap();
 
     match &input.data {
-        Data::Struct(data) => derive_json_deserialise_struct(&input, data),
+        Data::Struct(data) => derive_json_deserialise_struct(&input.ident, data),
         _ => panic!("Cannot derive JsonDeserialise on this type"),
     }
 }
